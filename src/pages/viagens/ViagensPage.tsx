@@ -328,7 +328,7 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
   const { toast } = useToast();
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
   const [loading, setLoading] = useState(false);
-  const [receiptsByExpense, setReceiptsByExpense] = useState<Record<string, { id: string; name: string; path: string }[]>>({});
+  const [receiptsByExpense, setReceiptsByExpense] = useState<Record<string, { id: string; name: string; path: string; type: string; url?: string }[]>>({});
   const [currentBudget, setCurrentBudget] = useState<number>(Number(trip.budget_amount));
   const [budgetAdd, setBudgetAdd] = useState<string>("");
   const [budgetSaving, setBudgetSaving] = useState(false);
@@ -344,11 +344,19 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
       const data = await fetchTripExpenses(trip.id);
       setExpenses(data || []);
       // Carregar comprovantes e gerar URLs assinadas por despesa
-      const map: Record<string, { id: string; name: string; path: string }[]> = {};
+      const map: Record<string, { id: string; name: string; path: string; type: string; url?: string }[]> = {};
       await Promise.all(
         (data || []).map(async (exp) => {
           const recs = await fetchTripReceipts(exp.id);
-          map[exp.id] = (recs || []).map((r) => ({ id: r.id, name: r.file_name, path: r.storage_path }));
+          const items = await Promise.all((recs || []).map(async (r) => {
+            try {
+              const url = await getSignedUrl(r.storage_path);
+              return { id: r.id, name: r.file_name, path: r.storage_path, type: r.file_type, url };
+            } catch {
+              return { id: r.id, name: r.file_name, path: r.storage_path, type: r.file_type };
+            }
+          }));
+          map[exp.id] = items;
         })
       );
       setReceiptsByExpense(map);
@@ -423,6 +431,9 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
   };
 
   const [closeNote, setCloseNote] = useState("");
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerType, setViewerType] = useState<string | null>(null);
+  const [viewerLoading, setViewerLoading] = useState(false);
   const handleCloseTrip = async () => {
     if (!user) return;
     const remaining = balance;
@@ -573,15 +584,15 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
                               className="p-0 h-auto text-[10px] sm:text-xs"
                               onClick={async () => {
                                 try {
-                                  const url = await getSignedUrl(r.path);
+                                  setViewerLoading(true);
+                                  const url = r.url || await getSignedUrl(r.path);
                                   if (!url) throw new Error('URL inválida');
-                                  const w = window.open(url, '_blank');
-                                  if (!w || w.closed || typeof w.closed === 'undefined') {
-                                    // fallback em caso de bloqueio de popup
-                                    window.location.href = url;
-                                  }
+                                  setViewerUrl(url);
+                                  setViewerType(r.type);
                                 } catch (e) {
                                   toast({ title: 'Erro', description: 'Falha ao abrir comprovante', variant: 'destructive' });
+                                } finally {
+                                  setViewerLoading(false);
                                 }
                               }}
                             >
@@ -652,6 +663,22 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
           </div>
         </CardContent>
       </Card>
+      {/* Modal de visualização de comprovante */}
+      <Dialog open={viewerLoading || !!viewerUrl} onOpenChange={(open) => { if (!open) { setViewerUrl(null); setViewerType(null); setViewerLoading(false); } }}>
+        <DialogContent className="max-w-2xl">
+          {viewerLoading ? (
+            <div className="text-center">Carregando comprovante...</div>
+          ) : viewerUrl && viewerType?.startsWith('image') ? (
+            <img src={viewerUrl} alt="Comprovante" className="max-h-[70vh] mx-auto" />
+          ) : viewerUrl && viewerType?.includes('pdf') ? (
+            <iframe src={viewerUrl} title="Comprovante PDF" className="w-full h-[70vh]" />
+          ) : viewerUrl ? (
+            <div className="text-center">
+              <a href={viewerUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Abrir comprovante</a>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
