@@ -182,32 +182,40 @@ export const fetchTripReceipts = async (expenseId: string) => {
 };
 
 export const getSignedUrl = async (storagePath: string) => {
-  // 1) tentativa direta
+  // 1) tentativa direta (batch API) - mais estável em alguns gateways
   const direct: any = await withTimeout(
     retry(async () => await (supabase as any).storage
-      .from("receipts")
-      .createSignedUrl(storagePath, 60 * 10), 2),
+      .from('receipts')
+      .createSignedUrls([storagePath], 60 * 10), 2),
     15000
   );
-  if (direct?.data?.signedUrl) return direct.data.signedUrl as string;
+  if (direct?.data && Array.isArray(direct.data) && direct.data[0]?.signedUrl) {
+    return direct.data[0].signedUrl as string;
+  }
   // 2) fallback: localizar arquivo via list no diretório e assinar com nome exato
   try {
     const lastSlash = storagePath.lastIndexOf('/');
-    const dir = lastSlash > 0 ? storagePath.substring(0, lastSlash) : '';
+    const dirRaw = lastSlash > 0 ? storagePath.substring(0, lastSlash) : '';
+    const dir = dirRaw.endsWith('/') ? dirRaw : (dirRaw ? dirRaw + '/' : '');
     const base = lastSlash > 0 ? storagePath.substring(lastSlash + 1) : storagePath;
     const listed: any = await withTimeout(
-      (supabase as any).storage.from('receipts').list(dir, { search: base, limit: 100 }),
+      (supabase as any).storage.from('receipts').list(dir, { limit: 1000 }),
       10000
     );
     const files = listed?.data as Array<{ name: string }> | undefined;
     if (files && files.length > 0) {
-      const match = files.find(f => f.name === base) || files[0];
-      const altPath = dir ? `${dir}/${match.name}` : match.name;
+      const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, '_');
+      const match = files.find(f => f.name === base)
+        || files.find(f => normalize(f.name) === normalize(base))
+        || files[0];
+      const altPath = `${dir}${match.name}`;
       const alt: any = await withTimeout(
-        (supabase as any).storage.from('receipts').createSignedUrl(altPath, 60 * 10),
+        (supabase as any).storage.from('receipts').createSignedUrls([altPath], 60 * 10),
         10000
       );
-      if (alt?.data?.signedUrl) return alt.data.signedUrl as string;
+      if (alt?.data && Array.isArray(alt.data) && alt.data[0]?.signedUrl) {
+        return alt.data[0].signedUrl as string;
+      }
     }
   } catch {}
   // 3) se ainda falhar, propaga erro para UI tratar
