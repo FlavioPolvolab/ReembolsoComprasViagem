@@ -182,14 +182,36 @@ export const fetchTripReceipts = async (expenseId: string) => {
 };
 
 export const getSignedUrl = async (storagePath: string) => {
-  const resG: any = await withTimeout(
+  // 1) tentativa direta
+  const direct: any = await withTimeout(
     retry(async () => await (supabase as any).storage
       .from("receipts")
       .createSignedUrl(storagePath, 60 * 10), 2),
     15000
-  ) as any;
-  if (resG?.error) throw resG.error;
-  return resG?.data?.signedUrl as string;
+  );
+  if (direct?.data?.signedUrl) return direct.data.signedUrl as string;
+  // 2) fallback: localizar arquivo via list no diretório e assinar com nome exato
+  try {
+    const lastSlash = storagePath.lastIndexOf('/');
+    const dir = lastSlash > 0 ? storagePath.substring(0, lastSlash) : '';
+    const base = lastSlash > 0 ? storagePath.substring(lastSlash + 1) : storagePath;
+    const listed: any = await withTimeout(
+      (supabase as any).storage.from('receipts').list(dir, { search: base, limit: 100 }),
+      10000
+    );
+    const files = listed?.data as Array<{ name: string }> | undefined;
+    if (files && files.length > 0) {
+      const match = files.find(f => f.name === base) || files[0];
+      const altPath = dir ? `${dir}/${match.name}` : match.name;
+      const alt: any = await withTimeout(
+        (supabase as any).storage.from('receipts').createSignedUrl(altPath, 60 * 10),
+        10000
+      );
+      if (alt?.data?.signedUrl) return alt.data.signedUrl as string;
+    }
+  } catch {}
+  // 3) se ainda falhar, propaga erro para UI tratar
+  throw new Error('Não foi possível gerar link do comprovante');
 };
 
 export const closeTrip = async (tripId: string, userId: string) => {

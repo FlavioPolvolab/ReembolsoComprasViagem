@@ -328,7 +328,7 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
   const { toast } = useToast();
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
   const [loading, setLoading] = useState(false);
-  const [receiptsByExpense, setReceiptsByExpense] = useState<Record<string, { id: string; name: string; path: string; type: string; url?: string }[]>>({});
+  const [receiptsByExpense, setReceiptsByExpense] = useState<Record<string, { id: string; name: string; path: string; type: string }[]>>({});
   const [currentBudget, setCurrentBudget] = useState<number>(Number(trip.budget_amount));
   const [budgetAdd, setBudgetAdd] = useState<string>("");
   const [budgetSaving, setBudgetSaving] = useState(false);
@@ -344,19 +344,11 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
       const data = await fetchTripExpenses(trip.id);
       setExpenses(data || []);
       // Carregar comprovantes e gerar URLs assinadas por despesa
-      const map: Record<string, { id: string; name: string; path: string; type: string; url?: string }[]> = {};
+      const map: Record<string, { id: string; name: string; path: string; type: string }[]> = {};
       await Promise.all(
         (data || []).map(async (exp) => {
           const recs = await fetchTripReceipts(exp.id);
-          const items = await Promise.all((recs || []).map(async (r) => {
-            try {
-              const url = await getSignedUrl(r.storage_path);
-              return { id: r.id, name: r.file_name, path: r.storage_path, type: r.file_type, url };
-            } catch {
-              return { id: r.id, name: r.file_name, path: r.storage_path, type: r.file_type };
-            }
-          }));
-          map[exp.id] = items;
+          map[exp.id] = (recs || []).map((r) => ({ id: r.id, name: r.file_name, path: r.storage_path, type: r.file_type }));
         })
       );
       setReceiptsByExpense(map);
@@ -434,6 +426,7 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerType, setViewerType] = useState<string | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const handleCloseTrip = async () => {
     if (!user) return;
     const remaining = balance;
@@ -584,8 +577,9 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
                               className="p-0 h-auto text-[10px] sm:text-xs"
                               onClick={async () => {
                                 try {
+                                  setViewerOpen(true);
                                   setViewerLoading(true);
-                                  const url = r.url || await getSignedUrl(r.path);
+                                  const url = await getSignedUrl(r.path);
                                   if (!url) throw new Error('URL inválida');
                                   setViewerUrl(url);
                                   setViewerType(r.type);
@@ -664,8 +658,11 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
         </CardContent>
       </Card>
       {/* Modal de visualização de comprovante */}
-      <Dialog open={viewerLoading || !!viewerUrl} onOpenChange={(open) => { if (!open) { setViewerUrl(null); setViewerType(null); setViewerLoading(false); } }}>
+      <Dialog open={viewerOpen} onOpenChange={(open) => { setViewerOpen(open); if (!open) { setViewerUrl(null); setViewerType(null); setViewerLoading(false); } }}>
         <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Visualizar comprovante</DialogTitle>
+          </DialogHeader>
           {viewerLoading ? (
             <div className="text-center">Carregando comprovante...</div>
           ) : viewerUrl && viewerType?.startsWith('image') ? (
@@ -676,7 +673,9 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
             <div className="text-center">
               <a href={viewerUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Abrir comprovante</a>
             </div>
-          ) : null}
+          ) : (
+            <div className="text-center text-sm text-muted-foreground">Nenhum comprovante para exibir.</div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
