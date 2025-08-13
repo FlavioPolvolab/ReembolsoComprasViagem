@@ -8,4 +8,33 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing Supabase environment variables");
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+  global: {
+    headers: {
+      'x-client-info': 'reembolso-app',
+    },
+  },
+});
+
+// Configurar reconexão automática para realtime
+supabase.realtime.onOpen(() => {
+  console.log('Realtime connection opened');
+});
+
+supabase.realtime.onClose(() => {
+  console.log('Realtime connection closed');
+});
+
+supabase.realtime.onError((error) => {
+  console.error('Realtime connection error:', error);
+});

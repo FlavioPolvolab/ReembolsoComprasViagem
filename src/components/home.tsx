@@ -10,7 +10,9 @@ import {
   Clock,
   Loader2,
   LogOut,
-  RefreshCw
+  RefreshCw,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 import ExpenseTable from "./ExpenseTable";
 import FilterBar from "./FilterBar";
@@ -22,14 +24,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import UserRegisterTab from "@/components/admin/UserRegisterTab";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
+import { useResilientQuery } from "@/hooks/useResilientQuery";
+import { useConnectionStatus } from "@/hooks/useConnectionStatus";
+import ConnectionStatus from "@/components/ConnectionStatus";
 
 const Home = () => {
   const [activeTab, setActiveTab] = useState("pending");
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showExpenseDetail, setShowExpenseDetail] = useState(false);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
-  const [expenses, setExpenses] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [filters, setFilters] = useState<{
     search: string;
     status?: string;
@@ -40,31 +43,31 @@ const Home = () => {
   const { toast } = useToast();
   const { isAdmin, user, signOut, hasRole } = useAuth();
   const navigate = useNavigate();
-  const dataLoadedRef = useRef(false);
-  const loadingTimeoutRef = useRef<NodeJS.Timeout>();
-  const mountedRef = useRef(true);
-  const initialLoadDoneRef = useRef(false);
+  const { isConnected, isOnline } = useConnectionStatus();
 
-  const loadExpenses = useCallback(async (showLoading = true) => {
-    if (isLoading || !mountedRef.current) return;
+  // Usar o hook resiliente para carregar despesas
+  const {
+    data: rawExpenses,
+    isLoading,
+    error: loadError,
+    refetch,
+    isStale,
+  } = useResilientQuery(
+    `expenses-${JSON.stringify(filters)}`,
+    () => fetchExpenses(filters),
+    {
+      staleTime: 30000, // 30 segundos
+      cacheTime: 300000, // 5 minutos
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: true,
+    }
+  );
+
+  // Formatar dados das despesas
+  const expenses = useMemo(() => {
+    if (!rawExpenses) return [];
     
-    try {
-      if (showLoading) {
-        setIsLoading(true);
-        if (loadingTimeoutRef.current) {
-          clearTimeout(loadingTimeoutRef.current);
-        }
-        loadingTimeoutRef.current = setTimeout(() => {
-          if (mountedRef.current) {
-            setIsLoading(false);
-          }
-        }, 5000);
-      }
-
-      const data = await fetchExpenses(filters);
-      if (!mountedRef.current) return;
-
-      const formattedExpenses = data.map((expense) => ({
+    return rawExpenses.map((expense) => ({
         id: expense.id,
         user_id: expense.user_id,
         name: expense.users && 'name' in expense.users ? expense.users.name : "Desconhecido",
@@ -78,55 +81,26 @@ const Home = () => {
         category: expense.categories && 'name' in expense.categories ? expense.categories.name : "",
         paymentDate: expense.payment_date,
       }));
-      
-      setExpenses(formattedExpenses);
-      dataLoadedRef.current = true;
-      initialLoadDoneRef.current = true;
-    } catch (error) {
-      console.error("Erro ao carregar despesas:", error);
-      if (mountedRef.current) {
-        toast({
-          title: "Erro",
-          description: "Não foi possível carregar as despesas. Tente novamente.",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      if (showLoading && mountedRef.current) {
-        setIsLoading(false);
-        if (loadingTimeoutRef.current) {
-          clearTimeout(loadingTimeoutRef.current);
-        }
-      }
-    }
-  }, [filters, isLoading, toast]);
-
-  // Efeito de limpeza ao desmontar
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Carregamento inicial apenas uma vez
-  useEffect(() => {
-    if (!initialLoadDoneRef.current && mountedRef.current) {
-      loadExpenses();
-    }
-  }, [loadExpenses]);
+  }, [rawExpenses]);
 
   const handleRefresh = useCallback(async () => {
-    await loadExpenses(true);
-    if (mountedRef.current) {
+    if (!isConnected || !isOnline) {
+      toast({
+        title: "Sem conexão",
+        description: "Não é possível atualizar sem conexão com a internet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    await refetch();
+    if (isConnected) {
       toast({
         title: "Sucesso",
         description: "Dados atualizados com sucesso!",
       });
     }
-  }, [loadExpenses, toast]);
+  }, [refetch, isConnected, isOnline, toast]);
 
   const handleViewDetails = (expense) => {
     setSelectedExpenseId(expense.id);
@@ -140,14 +114,14 @@ const Home = () => {
   const handleCloseForm = () => {
     setShowExpenseForm(false);
     // Recarregar despesas após fechar o formulário para mostrar novas entradas
-    loadExpenses();
+    refetch();
   };
 
   const handleCloseDetail = () => {
     setShowExpenseDetail(false);
     setSelectedExpenseId(null);
     // Recarregar despesas após fechar os detalhes para refletir possíveis mudanças de status
-    loadExpenses();
+    refetch();
   };
 
   const handleApprove = async (expense) => {
@@ -166,7 +140,7 @@ const Home = () => {
 
   const handleStatusChange = () => {
     // Recarregar despesas quando o status mudar (aprovado/rejeitado)
-    loadExpenses();
+    refetch();
   };
 
   const handleDelete = async (expense) => {
@@ -177,7 +151,7 @@ const Home = () => {
         title: "Sucesso",
         description: "Despesa excluída com sucesso!",
       });
-      loadExpenses();
+      refetch();
     } catch (error) {
       toast({
         title: "Erro",
@@ -261,9 +235,24 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-background p-6">
+      <ConnectionStatus />
       <div className="container mx-auto space-y-6">
           <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Sistema de Reembolso</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">Sistema de Reembolso</h1>
+            {!isConnected && (
+              <div className="flex items-center gap-1 text-red-500">
+                <WifiOff className="h-4 w-4" />
+                <span className="text-sm">Offline</span>
+              </div>
+            )}
+            {isStale && isConnected && (
+              <div className="flex items-center gap-1 text-amber-500">
+                <Clock className="h-4 w-4" />
+                <span className="text-sm">Dados desatualizados</span>
+              </div>
+            )}
+          </div>
           <div className="flex gap-2 items-center">
             <Button
               onClick={() => navigate('/')}
@@ -274,15 +263,17 @@ const Home = () => {
             </Button>
             <Button
               onClick={handleRefresh}
-              variant="outline"
+              variant={isStale ? "default" : "outline"}
               className="flex items-center gap-2"
+              disabled={!isConnected || !isOnline}
             >
               <RefreshCw className="h-5 w-5" />
-              Atualizar
+              {isStale ? "Atualizar dados" : "Atualizar"}
             </Button>
             <Button
               onClick={handleCreateExpense}
               className="flex items-center gap-2"
+              disabled={!isConnected || !isOnline}
             >
               <PlusCircle className="h-5 w-5" />
               Novo Reembolso
@@ -291,6 +282,7 @@ const Home = () => {
               <Button
                 onClick={() => setActiveTab("register")}
                 className="flex items-center gap-2"
+                disabled={!isConnected || !isOnline}
               >
                 <PlusCircle className="h-5 w-5" />
                 Cadastrar Usuário
@@ -405,8 +397,24 @@ const Home = () => {
           {isLoading ? (
             <div className="flex items-center justify-center p-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <span className="ml-2">Carregando despesas...</span>
+              <span className="ml-2">
+                {!isConnected ? "Tentando reconectar..." : "Carregando despesas..."}
+              </span>
             </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center p-12 space-y-4">
+            <XCircle className="h-12 w-12 text-red-500" />
+            <div className="text-center">
+              <h3 className="text-lg font-semibold">Erro ao carregar dados</h3>
+              <p className="text-muted-foreground">
+                {loadError.message || "Não foi possível carregar as despesas."}
+              </p>
+            </div>
+            <Button onClick={() => refetch()} disabled={!isConnected || !isOnline}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Tentar novamente
+            </Button>
+          </div>
           ) : (
             <>
               <TabsContent value="pending" className="mt-4">
@@ -418,7 +426,7 @@ const Home = () => {
                   hasRole={hasRole}
                   onBulkAction={async (selected, action) => {
                     await Promise.all(selected.map(e => updateExpenseStatus(e.id, action === "approve" ? "approved" : "rejected")));
-                    await loadExpenses();
+                    await refetch();
                   }}
                   onDelete={handleDelete}
                 />
@@ -433,7 +441,7 @@ const Home = () => {
                     await Promise.all(
                       selected.map(e => updatePaymentStatus(e.id, true))
                     );
-                    await loadExpenses();
+                    await refetch();
                   }}
                 />
               </TabsContent>

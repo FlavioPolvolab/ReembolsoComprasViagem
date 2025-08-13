@@ -18,6 +18,7 @@ import HomeSelector from "./pages/HomeSelector";
 import PedidosTable from "./pages/compras/PedidosTable";
 import NovoPedido from "./pages/compras/NovoPedido";
 import ViagensPage from "./pages/viagens/ViagensPage";
+import { Toaster } from "@/components/ui/toaster";
 
 // Componente para proteger rotas baseado em papéis
 const RoleProtectedRoute = ({
@@ -72,6 +73,7 @@ function App() {
           {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
         </>
       </Suspense>
+      <Toaster />
     </AuthProvider>
   );
 }

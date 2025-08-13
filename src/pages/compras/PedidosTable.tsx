@@ -8,31 +8,15 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import NovoPedido from "./NovoPedido";
 import PedidoDetail from "./PedidoDetail";
-import { CheckCircle, XCircle, Clock, RefreshCw, LogOut } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, RefreshCw, LogOut, WifiOff } from 'lucide-react';
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import PurchaseOrderTable from "@/components/PurchaseOrderTable";
-
-const TIMEOUT_MS = 10000;
-
-function withTimeout<T>(promise: Promise<T>, ms = TIMEOUT_MS): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Tempo limite excedido ao buscar pedidos.")), ms))
-  ]);
-}
-
-const debounce = (func: (...args: any[]) => void, wait: number) => {
-  let timeout: any;
-  return (...args: any[]) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-};
+import { useResilientQuery } from "@/hooks/useResilientQuery";
+import { useConnectionStatus } from "@/hooks/useConnectionStatus";
+import ConnectionStatus from "@/components/ConnectionStatus";
 
 const PedidosTable: React.FC = () => {
-  const [pedidos, setPedidos] = useState<PurchaseOrder[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [showNovoModal, setShowNovoModal] = useState(false);
@@ -40,39 +24,36 @@ const PedidosTable: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [massActionLoading, setMassActionLoading] = useState(false);
   const { user, isAdmin, hasRole } = useAuth();
-  const loadingRef = useRef(false);
+  const { isConnected, isOnline } = useConnectionStatus();
 
-  const loadPedidos = async () => {
-    if (loadingRef.current) return;
-    setLoading(true);
-    loadingRef.current = true;
-    try {
-      const data = await withTimeout((fetchPurchaseOrders as any)(user?.id, isAdmin), TIMEOUT_MS);
-      setPedidos((data as PurchaseOrder[]) || []);
-    } catch (e) {
-      setPedidos([]);
-    } finally {
-      setLoading(false);
-      loadingRef.current = false;
+  // Usar o hook resiliente para carregar pedidos
+  const {
+    data: pedidos,
+    isLoading,
+    error: loadError,
+    refetch,
+    isStale,
+  } = useResilientQuery(
+    `purchase-orders-${user?.id}-${isAdmin}`,
+    () => fetchPurchaseOrders(user?.id, isAdmin),
+    {
+      staleTime: 30000,
+      cacheTime: 300000,
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: true,
     }
-  };
-
-  const debouncedLoadPedidos = useRef(debounce(loadPedidos, 500)).current;
-
-  useEffect(() => {
-    loadPedidos();
-  }, []);
+  );
 
   // Resumos
-  const totalCount = pedidos.length;
-  const pending = pedidos.filter(p => p.status === "pending");
-  const approved = pedidos.filter(p => p.status === "approved");
+  const totalCount = pedidos?.length || 0;
+  const pending = pedidos?.filter(p => p.status === "pending") || [];
+  const approved = pedidos?.filter(p => p.status === "approved") || [];
   const approvedSorted = [...approved].sort((a, b) => {
     if (a.is_paid === b.is_paid) return 0;
     return a.is_paid ? 1 : -1;
   });
-  const rejected = pedidos.filter(p => p.status === "rejected");
-  const totalValue = pedidos.reduce((acc, p) => acc + (p.total_amount || 0), 0);
+  const rejected = pedidos?.filter(p => p.status === "rejected") || [];
+  const totalValue = pedidos?.reduce((acc, p) => acc + (p.total_amount || 0), 0) || 0;
   const pendingValue = pending.reduce((acc, p) => acc + (p.total_amount || 0), 0);
   const approvedValue = approved.reduce((acc, p) => acc + (p.total_amount || 0), 0);
   const rejectedValue = rejected.reduce((acc, p) => acc + (p.total_amount || 0), 0);
@@ -85,7 +66,7 @@ const PedidosTable: React.FC = () => {
 
   // Filtro e tabs
   const filteredPedidos = useMemo(() => {
-    let result = pedidos;
+    let result = pedidos || [];
     if (search.trim() !== "") {
       const s = search.trim().toLowerCase();
       result = result.filter(p =>
@@ -102,11 +83,11 @@ const PedidosTable: React.FC = () => {
   // Handler para fechar modal e recarregar lista
   const handleNovoClose = (refresh?: boolean) => {
     setShowNovoModal(false);
-    if (refresh) loadPedidos();
+    if (refresh) refetch();
   };
   const handleDetailClose = (refresh?: boolean) => {
     setSelectedPedidoId(null);
-    if (refresh) loadPedidos();
+    if (refresh) refetch();
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -123,7 +104,7 @@ const PedidosTable: React.FC = () => {
     try {
       await Promise.all(selectedIds.map(id => approvePurchaseOrder(id, user.id)));
       setSelectedIds([]);
-      loadPedidos();
+      refetch();
     } finally {
       setMassActionLoading(false);
     }
@@ -134,7 +115,7 @@ const PedidosTable: React.FC = () => {
     try {
       await Promise.all(selectedIds.map(id => rejectPurchaseOrder(id, user.id, "Rejeitado em massa")));
       setSelectedIds([]);
-      loadPedidos();
+      refetch();
     } finally {
       setMassActionLoading(false);
     }
@@ -142,24 +123,36 @@ const PedidosTable: React.FC = () => {
 
   const handleMarkPaid = async (pedido: PurchaseOrder) => {
     if (!pedido || pedido.is_paid) return;
-    setLoading(true);
     try {
       await (supabase as any)
         .from("purchase_orders")
         .update({ is_paid: true })
         .eq("id", pedido.id);
-      loadPedidos();
+      refetch();
     } catch (e) {
       // Pode exibir um toast de erro se desejar
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <div className="flex flex-col items-center min-h-[80vh] p-4">
+      <ConnectionStatus />
       <div className="w-full max-w-7xl">
-        <h1 className="text-3xl font-bold mb-6">Sistema de Pedidos de Compras</h1>
+        <div className="flex items-center gap-3 mb-6">
+          <h1 className="text-3xl font-bold">Sistema de Pedidos de Compras</h1>
+          {!isConnected && (
+            <div className="flex items-center gap-1 text-red-500">
+              <WifiOff className="h-4 w-4" />
+              <span className="text-sm">Offline</span>
+            </div>
+          )}
+          {isStale && isConnected && (
+            <div className="flex items-center gap-1 text-amber-500">
+              <Clock className="h-4 w-4" />
+              <span className="text-sm">Dados desatualizados</span>
+            </div>
+          )}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card className="bg-white">
             <CardHeader className="pb-2 flex flex-row items-center gap-2">
@@ -223,10 +216,17 @@ const PedidosTable: React.FC = () => {
           </Tabs>
           <div className="flex gap-2 ml-4">
             <Button variant="outline" onClick={() => window.location.assign('/')}>Home</Button>
-            <Button variant="outline" onClick={debouncedLoadPedidos} disabled={loading}>
+            <Button 
+              variant={isStale ? "default" : "outline"} 
+              onClick={() => refetch()} 
+              disabled={isLoading || !isConnected || !isOnline}
+            >
               <RefreshCw className="mr-2 h-4 w-4" /> Atualizar
             </Button>
-            <Button onClick={() => setShowNovoModal(true)}>
+            <Button 
+              onClick={() => setShowNovoModal(true)}
+              disabled={!isConnected || !isOnline}
+            >
               Novo Pedido
             </Button>
             <Button variant="outline" onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }}>
@@ -252,6 +252,22 @@ const PedidosTable: React.FC = () => {
           </div>
         )}
 
+        {loadError && (
+          <div className="flex flex-col items-center justify-center p-12 space-y-4">
+            <XCircle className="h-12 w-12 text-red-500" />
+            <div className="text-center">
+              <h3 className="text-lg font-semibold">Erro ao carregar pedidos</h3>
+              <p className="text-muted-foreground">
+                {loadError.message || "Não foi possível carregar os pedidos."}
+              </p>
+            </div>
+            <Button onClick={() => refetch()} disabled={!isConnected || !isOnline}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Tentar novamente
+            </Button>
+          </div>
+        )}
+
         <PurchaseOrderTable
           orders={filteredPedidos}
           onViewDetails={pedido => setSelectedPedidoId(pedido.id)}
@@ -262,11 +278,11 @@ const PedidosTable: React.FC = () => {
             } else if (action === "reject") {
               await Promise.all(selected.map(p => rejectPurchaseOrder(p.id, user.id, "Rejeitado em massa")));
             }
-            loadPedidos();
+            refetch();
           }}
-          onApprove={async pedido => { if (!user) return; await approvePurchaseOrder(pedido.id, user.id); loadPedidos(); }}
-          onReject={async pedido => { if (!user) return; await rejectPurchaseOrder(pedido.id, user.id, "Rejeitado"); loadPedidos(); }}
-          onDelete={async pedido => { if (!user) return; await deletePurchaseOrder(pedido.id, user.id); loadPedidos(); }}
+          onApprove={async pedido => { if (!user) return; await approvePurchaseOrder(pedido.id, user.id); refetch(); }}
+          onReject={async pedido => { if (!user) return; await rejectPurchaseOrder(pedido.id, user.id, "Rejeitado"); refetch(); }}
+          onDelete={async pedido => { if (!user) return; await deletePurchaseOrder(pedido.id, user.id); refetch(); }}
           isAdmin={isAdmin}
           hasRole={hasRole}
           onMarkPaid={handleMarkPaid}

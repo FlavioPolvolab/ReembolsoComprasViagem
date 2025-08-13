@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { withTimeout, retry } from "@/lib/utils";
+import { withTimeout, retry, withReconnect } from "@/lib/utils";
 
 export type Trip = {
   id: string;
@@ -42,16 +42,18 @@ export type TripReceipt = {
 };
 
 export const fetchTrips = async (userId?: string, isAdmin?: boolean) => {
-  let query = (supabase as any)
-    .from("trips")
-    .select("*, users:user_id(name), cost_center:cost_center_id(name)")
-    .order("created_at", { ascending: false });
-  if (!isAdmin && userId) {
-    query = query.eq("user_id", userId);
-  }
-  const { data, error } = await withTimeout(query, 12000) as any;
-  if (error) throw error;
-  return (data || []) as Trip[];
+  return withReconnect(async () => {
+    let query = (supabase as any)
+      .from("trips")
+      .select("*, users:user_id(name), cost_center:cost_center_id(name)")
+      .order("created_at", { ascending: false });
+    if (!isAdmin && userId) {
+      query = query.eq("user_id", userId);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []) as Trip[];
+  });
 };
 
 export const createTrip = async (trip: {
@@ -63,32 +65,35 @@ export const createTrip = async (trip: {
   user_id: string;
   cost_center_id?: string | null;
 }) => {
-  const { data, error } = await (supabase as any)
-    .from("trips")
-    .insert(trip)
-    .select()
-    .single();
-  if (error) throw error;
-  return data as Trip;
+  return withReconnect(async () => {
+    const { data, error } = await (supabase as any)
+      .from("trips")
+      .insert(trip)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as Trip;
+  });
 };
 
 export const deleteTrip = async (tripId: string) => {
-  const { error } = await (supabase as any).from("trips").delete().eq("id", tripId);
-  if (error) throw error;
-  return true;
+  return withReconnect(async () => {
+    const { error } = await (supabase as any).from("trips").delete().eq("id", tripId);
+    if (error) throw error;
+    return true;
+  });
 };
 
 export const fetchTripExpenses = async (tripId: string) => {
-  const resA: any = await withTimeout(
-    retry(async () => await (supabase as any)
+  return withReconnect(async () => {
+    const { data, error } = await (supabase as any)
       .from("trip_expenses")
       .select("*")
       .eq("trip_id", tripId)
-      .order("created_at", { ascending: true }), 2),
-    12000
-  ) as any;
-  if (resA?.error) throw resA.error;
-  return (resA?.data || []) as TripExpense[];
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data || []) as TripExpense[];
+  });
 };
 
 export const addTripExpense = async (expense: {
@@ -98,43 +103,40 @@ export const addTripExpense = async (expense: {
   expense_date?: string | null;
   category?: string | null;
 }) => {
-  const resB: any = await withTimeout(
-    (supabase as any)
+  return withReconnect(async () => {
+    const { data, error } = await (supabase as any)
       .from("trip_expenses")
       .insert({ ...expense })
       .select()
-      .single(),
-    12000
-  ) as any;
-  if (resB?.error) throw resB.error;
-  return resB?.data as TripExpense;
+      .single();
+    if (error) throw error;
+    return data as TripExpense;
+  });
 };
 
 export const updateTripExpense = async (
   expenseId: string,
   changes: Partial<Pick<TripExpense, "description" | "amount" | "expense_date" | "category" | "reconciled">>
 ) => {
-  const resC: any = await withTimeout(
-    (supabase as any)
+  return withReconnect(async () => {
+    const { error } = await (supabase as any)
       .from("trip_expenses")
       .update(changes)
-      .eq("id", expenseId),
-    12000
-  );
-  if (resC?.error) throw resC.error;
-  return true;
+      .eq("id", expenseId);
+    if (error) throw error;
+    return true;
+  });
 };
 
 export const deleteTripExpense = async (expenseId: string) => {
-  const resD: any = await withTimeout(
-    (supabase as any)
+  return withReconnect(async () => {
+    const { error } = await (supabase as any)
       .from("trip_expenses")
       .delete()
-      .eq("id", expenseId),
-    12000
-  );
-  if (resD?.error) throw resD.error;
-  return true;
+      .eq("id", expenseId);
+    if (error) throw error;
+    return true;
+  });
 };
 
 export const uploadTripReceipt = async (tripId: string, expenseId: string, file: File) => {
