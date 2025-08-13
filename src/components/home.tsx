@@ -370,7 +370,6 @@ const Home = () => {
                 {loadError.message || "Não foi possível carregar as despesas."}
               </p>
             </div>
-            <Button onClick={() => refetch()} disabled={!isConnected || !isOnline}>
             <Button onClick={handleRefresh}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Tentar novamente
