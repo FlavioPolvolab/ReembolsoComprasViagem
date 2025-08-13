@@ -376,7 +376,7 @@ const ViagensPage: React.FC = () => {
   );
 };
 
-const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => void; forceReloadToken?: number }> = ({ trip, onClose, onChanged, forceReloadToken }) => {
+const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => void }> = ({ trip, onClose, onChanged }) => {
   const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
@@ -423,7 +423,7 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
     setBudgetAdd("");
     setCurrentBudget(Number(trip.budget_amount));
     load();
-  }, [load, forceReloadToken]);
+  }, [load]);
 
   const totalSpent = useMemo(() => expenses.reduce((s, e) => s + Number(e.amount || 0), 0), [expenses]);
   const balance = useMemo(() => Number(currentBudget) - totalSpent, [currentBudget, totalSpent]);
