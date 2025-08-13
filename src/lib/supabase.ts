@@ -25,16 +25,3 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     },
   },
 });
-
-// Configurar reconexão automática para realtime
-supabase.realtime.onOpen(() => {
-  console.log('Realtime connection opened');
-});
-
-supabase.realtime.onClose(() => {
-  console.log('Realtime connection closed');
-});
-
-supabase.realtime.onError((error) => {
-  console.error('Realtime connection error:', error);
-});
