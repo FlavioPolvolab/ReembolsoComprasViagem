@@ -35,7 +35,7 @@ export const useResilientQuery = <T>(
 
   const [state, setState] = useState<QueryState<T>>({
     data: null,
-    isLoading: false,
+    isLoading: true,
     error: null,
     lastFetched: null,
     isStale: false,
@@ -46,6 +46,15 @@ export const useResilientQuery = <T>(
   const abortControllerRef = useRef<AbortController | null>(null);
   const cacheRef = useRef<Map<string, { data: T; timestamp: number }>>(new Map());
   const retryTimeoutRef = useRef<NodeJS.Timeout>();
+  const hasInitialLoadRef = useRef(false);
+
+  // Carregar dados inicialmente
+  useEffect(() => {
+    if (!hasInitialLoadRef.current && isOnline && isConnected) {
+      hasInitialLoadRef.current = true;
+      refetch(true);
+    }
+  }, [isOnline, isConnected]);
 
   const executeQuery = useCallback(async (attempt = 0): Promise<T> => {
     // Verificar cache primeiro
@@ -88,11 +97,6 @@ export const useResilientQuery = <T>(
 
   const refetch = useCallback(async (showLoading = true) => {
     if (!isOnline || !isConnected) {
-      toast({
-        title: "Sem conexão",
-        description: "Não é possível atualizar os dados sem conexão com a internet.",
-        variant: "destructive",
-      });
       return;
     }
 
@@ -119,8 +123,8 @@ export const useResilientQuery = <T>(
         }));
 
         toast({
-          title: "Erro ao carregar dados",
-          description: "Falha ao carregar dados. Tentando novamente automaticamente...",
+          title: "Erro de conexão",
+          description: "Tentando reconectar automaticamente...",
           variant: "destructive",
         });
 
@@ -152,11 +156,6 @@ export const useResilientQuery = <T>(
         }
       }
     };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [refetchOnWindowFocus, isConnected, state.lastFetched, staleTime, refetch]);
-
   // Marcar dados como stale após staleTime
   useEffect(() => {
     if (!state.lastFetched) return;
@@ -169,11 +168,6 @@ export const useResilientQuery = <T>(
   }, [state.lastFetched, staleTime]);
 
   // Cleanup
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
       }

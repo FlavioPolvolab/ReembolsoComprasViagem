@@ -70,15 +70,15 @@ const Home = () => {
     return rawExpenses.map((expense) => ({
         id: expense.id,
         user_id: expense.user_id,
-        name: expense.users && 'name' in expense.users ? expense.users.name : "Desconhecido",
+        name: expense.users && 'name' in expense.users ? (expense.users.name || "Desconhecido") : "Desconhecido",
         description: expense.description,
         amount: expense.amount,
         status: expense.status,
-        payment_status: 'payment_status' in expense ? expense.payment_status : undefined,
+        payment_status: 'payment_status' in expense ? expense.payment_status : "pending",
         date: expense.submitted_date,
         purpose: expense.purpose,
-        costCenter: expense.cost_centers && 'name' in expense.cost_centers ? expense.cost_centers.name : "",
-        category: expense.categories && 'name' in expense.categories ? expense.categories.name : "",
+        costCenter: expense.cost_centers && 'name' in expense.cost_centers ? (expense.cost_centers.name || "") : "",
+        category: expense.categories && 'name' in expense.categories ? (expense.categories.name || "") : "",
         paymentDate: expense.payment_date,
       }));
   }, [rawExpenses]);

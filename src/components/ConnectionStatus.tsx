@@ -7,12 +7,13 @@ import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 const ConnectionStatus: React.FC = () => {
   const { isOnline, isConnected, isReconnecting, reconnectAttempts, reconnect } = useConnectionStatus();
 
-  if (isOnline && isConnected && !isReconnecting) {
+  // Só mostrar se houver problema real de conexão
+  if (isOnline && isConnected && !isReconnecting && reconnectAttempts === 0) {
     return null; // Não mostrar nada quando tudo está funcionando
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 max-w-sm">
+    <div className="fixed top-4 right-4 z-50 max-w-sm animate-in slide-in-from-top-2">
       <Alert variant={!isOnline || !isConnected ? "destructive" : "default"}>
         <div className="flex items-center gap-2">
           {!isOnline ? (
