@@ -276,7 +276,7 @@ const ViagensPage: React.FC = () => {
           </DialogHeader>
           {showTripDetail && (
             <div className="max-h-[80svh] sm:max-h-[70vh] overflow-y-auto overscroll-contain pr-1">
-              <TripDetail trip={showTripDetail} onClose={() => setShowTripDetail(null)} onChanged={refetch} forceReloadToken={refreshToken} />
+              <TripDetail trip={showTripDetail} onClose={() => setShowTripDetail(null)} onChanged={refetch} />
             </div>
           )}
         </DialogContent>
