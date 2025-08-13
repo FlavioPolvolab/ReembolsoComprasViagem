@@ -39,6 +39,7 @@ const ViagensPage: React.FC = () => {
   const [search, setSearch] = useState("");
   const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
   const [filterCostCenterId, setFilterCostCenterId] = useState<string>("");
+  const [refreshToken, setRefreshToken] = useState(0);
 
   const loadTrips = useCallback(async () => {
     if (!user) return;
@@ -98,12 +99,13 @@ const ViagensPage: React.FC = () => {
           <h1 className="text-3xl font-bold">Conciliação de Viagens</h1>
           <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center w-full sm:w-auto max-w-xs sm:max-w-none">
             <Button onClick={() => window.location.assign('/')} variant="outline" className="w-full sm:w-auto">Home</Button>
-            <Button onClick={loadTrips} variant="outline" className="flex items-center gap-2 w-full sm:w-auto">
+            <Button onClick={async () => { setRefreshToken(t => t + 1); await loadTrips(); }} disabled={isLoading} variant="outline" className="flex items-center gap-2 w-full sm:w-auto">
               <RefreshCw className="h-5 w-5" /> Atualizar
             </Button>
             <Button onClick={() => setShowNewTrip(true)} className="flex items-center gap-2 w-full sm:w-auto">
               <PlusCircle className="h-5 w-5" /> Nova Viagem
             </Button>
+            <Button onClick={async () => { await (supabase as any).auth.signOut(); window.location.reload(); }} variant="destructive" className="w-full sm:w-auto">Sair</Button>
           </div>
         </div>
 
@@ -223,7 +225,7 @@ const ViagensPage: React.FC = () => {
           </DialogHeader>
           {showTripDetail && (
             <div className="max-h-[80svh] sm:max-h-[70vh] overflow-y-auto overscroll-contain pr-1">
-              <TripDetail trip={showTripDetail} onClose={() => setShowTripDetail(null)} onChanged={loadTrips} />
+              <TripDetail trip={showTripDetail} onClose={() => setShowTripDetail(null)} onChanged={loadTrips} forceReloadToken={refreshToken} />
             </div>
           )}
         </DialogContent>
@@ -323,7 +325,7 @@ const ViagensPage: React.FC = () => {
   );
 };
 
-const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => void }> = ({ trip, onClose, onChanged }) => {
+const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => void; forceReloadToken?: number }> = ({ trip, onClose, onChanged, forceReloadToken }) => {
   const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
@@ -370,7 +372,7 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
     setBudgetAdd("");
     setCurrentBudget(Number(trip.budget_amount));
     load();
-  }, [load]);
+  }, [load, forceReloadToken]);
 
   const totalSpent = useMemo(() => expenses.reduce((s, e) => s + Number(e.amount || 0), 0), [expenses]);
   const balance = useMemo(() => Number(currentBudget) - totalSpent, [currentBudget, totalSpent]);
