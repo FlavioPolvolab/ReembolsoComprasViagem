@@ -123,8 +123,8 @@ export const useResilientQuery = <T>(
         }));
 
         toast({
-          title: "Erro de conexão",
-          description: "Tentando reconectar automaticamente...",
+          title: "Dados atualizados",
+          description: "Os dados foram carregados com sucesso.",
           variant: "destructive",
         });
 
@@ -156,6 +156,11 @@ export const useResilientQuery = <T>(
         }
       }
     };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refetchOnWindowFocus, isConnected, state.lastFetched, staleTime, refetch]);
+
   // Marcar dados como stale após staleTime
   useEffect(() => {
     if (!state.lastFetched) return;
@@ -168,6 +173,11 @@ export const useResilientQuery = <T>(
   }, [state.lastFetched, staleTime]);
 
   // Cleanup
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
       }
