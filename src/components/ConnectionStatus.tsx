@@ -5,15 +5,15 @@ import { Wifi, WifiOff, Loader2, RefreshCw } from 'lucide-react';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 
 const ConnectionStatus: React.FC = () => {
-  const { isOnline, isConnected, isReconnecting, reconnectAttempts, reconnect } = useConnectionStatus();
+  const { isOnline, isConnected, isReconnecting, reconnect } = useConnectionStatus();
 
   // Só mostrar se houver problema real de conexão
-  if (isOnline && isConnected && !isReconnecting && reconnectAttempts === 0) {
-    return null; // Não mostrar nada quando tudo está funcionando
+  if (isOnline && isConnected && !isReconnecting) {
+    return null;
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 max-w-sm animate-in slide-in-from-top-2">
+    <div className="fixed top-4 right-4 z-50 max-w-sm">
       <Alert variant={!isOnline || !isConnected ? "destructive" : "default"}>
         <div className="flex items-center gap-2">
           {!isOnline ? (
@@ -29,9 +29,9 @@ const ConnectionStatus: React.FC = () => {
               {!isOnline ? (
                 "Você está offline"
               ) : isReconnecting ? (
-                `Reconectando... (tentativa ${reconnectAttempts})`
+                "Reconectando..."
               ) : !isConnected ? (
-                "Conexão com banco perdida"
+                "Conexão perdida"
               ) : (
                 "Reconectando..."
               )}
@@ -46,7 +46,7 @@ const ConnectionStatus: React.FC = () => {
               className="ml-2"
             >
               <RefreshCw className="h-3 w-3 mr-1" />
-              Tentar novamente
+              Reconectar
             </Button>
           )}
         </div>

@@ -12,9 +12,6 @@ import { CheckCircle, XCircle, Clock, RefreshCw, LogOut, WifiOff } from 'lucide-
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import PurchaseOrderTable from "@/components/PurchaseOrderTable";
-import { useResilientQuery } from "@/hooks/useResilientQuery";
-import { useConnectionStatus } from "@/hooks/useConnectionStatus";
-import ConnectionStatus from "@/components/ConnectionStatus";
 
 const PedidosTable: React.FC = () => {
   const [activeTab, setActiveTab] = useState("pending");
@@ -24,25 +21,27 @@ const PedidosTable: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [massActionLoading, setMassActionLoading] = useState(false);
   const { user, isAdmin, hasRole } = useAuth();
-  const { isConnected, isOnline } = useConnectionStatus();
+  const [pedidos, setPedidos] = useState<PurchaseOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<Error | null>(null);
 
-  // Usar o hook resiliente para carregar pedidos
-  const {
-    data: pedidos,
-    isLoading,
-    error: loadError,
-    refetch,
-    isStale,
-  } = useResilientQuery(
-    `purchase-orders-${user?.id}-${isAdmin}`,
-    () => fetchPurchaseOrders(user?.id, isAdmin),
-    {
-      staleTime: 30000,
-      cacheTime: 300000,
-      refetchOnReconnect: true,
-      refetchOnWindowFocus: true,
+  const loadPedidos = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const data = await fetchPurchaseOrders(user.id, isAdmin);
+      setPedidos(data || []);
+    } catch (error: any) {
+      setLoadError(error);
+    } finally {
+      setIsLoading(false);
     }
-  );
+  }, [user, isAdmin]);
+
+  useEffect(() => {
+    loadPedidos();
+  }, [loadPedidos]);
 
   // Resumos
   const totalCount = pedidos?.length || 0;
@@ -83,11 +82,11 @@ const PedidosTable: React.FC = () => {
   // Handler para fechar modal e recarregar lista
   const handleNovoClose = (refresh?: boolean) => {
     setShowNovoModal(false);
-    if (refresh) refetch();
+    if (refresh) loadPedidos();
   };
   const handleDetailClose = (refresh?: boolean) => {
     setSelectedPedidoId(null);
-    if (refresh) refetch();
+    if (refresh) loadPedidos();
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -104,7 +103,7 @@ const PedidosTable: React.FC = () => {
     try {
       await Promise.all(selectedIds.map(id => approvePurchaseOrder(id, user.id)));
       setSelectedIds([]);
-      refetch();
+      loadPedidos();
     } finally {
       setMassActionLoading(false);
     }
@@ -115,7 +114,7 @@ const PedidosTable: React.FC = () => {
     try {
       await Promise.all(selectedIds.map(id => rejectPurchaseOrder(id, user.id, "Rejeitado em massa")));
       setSelectedIds([]);
-      refetch();
+      loadPedidos();
     } finally {
       setMassActionLoading(false);
     }
@@ -128,7 +127,7 @@ const PedidosTable: React.FC = () => {
         .from("purchase_orders")
         .update({ is_paid: true })
         .eq("id", pedido.id);
-      refetch();
+      loadPedidos();
     } catch (e) {
       // Pode exibir um toast de erro se desejar
     }
@@ -136,22 +135,9 @@ const PedidosTable: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center min-h-[80vh] p-4">
-      <ConnectionStatus />
       <div className="w-full max-w-7xl">
         <div className="flex items-center gap-3 mb-6">
           <h1 className="text-3xl font-bold">Sistema de Pedidos de Compras</h1>
-          {!isConnected && (
-            <div className="flex items-center gap-1 text-red-500">
-              <WifiOff className="h-4 w-4" />
-              <span className="text-sm">Offline</span>
-            </div>
-          )}
-          {isStale && isConnected && (
-            <div className="flex items-center gap-1 text-amber-500">
-              <Clock className="h-4 w-4" />
-              <span className="text-sm">Dados desatualizados</span>
-            </div>
-          )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card className="bg-white">
@@ -217,15 +203,14 @@ const PedidosTable: React.FC = () => {
           <div className="flex gap-2 ml-4">
             <Button variant="outline" onClick={() => window.location.assign('/')}>Home</Button>
             <Button 
-              variant={isStale ? "default" : "outline"} 
-              onClick={() => refetch()} 
-              disabled={isLoading || !isConnected || !isOnline}
+              variant="outline" 
+              onClick={loadPedidos} 
+              disabled={isLoading}
             >
               <RefreshCw className="mr-2 h-4 w-4" /> Atualizar
             </Button>
             <Button 
               onClick={() => setShowNovoModal(true)}
-              disabled={!isConnected || !isOnline}
             >
               Novo Pedido
             </Button>
@@ -261,7 +246,7 @@ const PedidosTable: React.FC = () => {
                 {loadError.message || "Não foi possível carregar os pedidos."}
               </p>
             </div>
-            <Button onClick={() => refetch()} disabled={!isConnected || !isOnline}>
+            <Button onClick={loadPedidos}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Tentar novamente
             </Button>
@@ -278,11 +263,11 @@ const PedidosTable: React.FC = () => {
             } else if (action === "reject") {
               await Promise.all(selected.map(p => rejectPurchaseOrder(p.id, user.id, "Rejeitado em massa")));
             }
-            refetch();
+            loadPedidos();
           }}
-          onApprove={async pedido => { if (!user) return; await approvePurchaseOrder(pedido.id, user.id); refetch(); }}
-          onReject={async pedido => { if (!user) return; await rejectPurchaseOrder(pedido.id, user.id, "Rejeitado"); refetch(); }}
-          onDelete={async pedido => { if (!user) return; await deletePurchaseOrder(pedido.id, user.id); refetch(); }}
+          onApprove={async pedido => { if (!user) return; await approvePurchaseOrder(pedido.id, user.id); loadPedidos(); }}
+          onReject={async pedido => { if (!user) return; await rejectPurchaseOrder(pedido.id, user.id, "Rejeitado"); loadPedidos(); }}
+          onDelete={async pedido => { if (!user) return; await deletePurchaseOrder(pedido.id, user.id); loadPedidos(); }}
           isAdmin={isAdmin}
           hasRole={hasRole}
           onMarkPaid={handleMarkPaid}
