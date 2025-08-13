@@ -427,6 +427,7 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
   const [viewerType, setViewerType] = useState<string | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerError, setViewerError] = useState<string | null>(null);
   const handleCloseTrip = async () => {
     if (!user) return;
     const remaining = balance;
@@ -579,11 +580,16 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
                                 try {
                                   setViewerOpen(true);
                                   setViewerLoading(true);
+                                  setViewerError(null);
+                                  console.log('[TripDetail] Abrindo comprovante:', r);
                                   const url = await getSignedUrl(r.path);
                                   if (!url) throw new Error('URL inválida');
                                   setViewerUrl(url);
                                   setViewerType(r.type);
+                                  console.log('[TripDetail] URL assinada gerada:', url);
                                 } catch (e) {
+                                  console.error('[TripDetail] Erro ao abrir comprovante:', e);
+                                  setViewerError(e instanceof Error ? e.message : 'Falha ao abrir comprovante');
                                   toast({ title: 'Erro', description: 'Falha ao abrir comprovante', variant: 'destructive' });
                                 } finally {
                                   setViewerLoading(false);
@@ -658,7 +664,7 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
         </CardContent>
       </Card>
       {/* Modal de visualização de comprovante */}
-      <Dialog open={viewerOpen} onOpenChange={(open) => { setViewerOpen(open); if (!open) { setViewerUrl(null); setViewerType(null); setViewerLoading(false); } }}>
+      <Dialog open={viewerOpen} onOpenChange={(open) => { setViewerOpen(open); if (!open) { setViewerUrl(null); setViewerType(null); setViewerLoading(false); setViewerError(null); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Visualizar comprovante</DialogTitle>
@@ -673,6 +679,8 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
             <div className="text-center">
               <a href={viewerUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Abrir comprovante</a>
             </div>
+          ) : viewerError ? (
+            <div className="text-center text-sm text-red-600">{viewerError}</div>
           ) : (
             <div className="text-center text-sm text-muted-foreground">Nenhum comprovante para exibir.</div>
           )}

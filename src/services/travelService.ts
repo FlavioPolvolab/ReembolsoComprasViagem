@@ -192,6 +192,26 @@ export const getSignedUrl = async (storagePath: string) => {
   if (direct?.data && Array.isArray(direct.data) && direct.data[0]?.signedUrl) {
     return direct.data[0].signedUrl as string;
   }
+  // 1b) fallback simples usando API de item único
+  try {
+    const single: any = await withTimeout(
+      (supabase as any).storage.from('receipts').createSignedUrl(storagePath, 60 * 10),
+      12000
+    );
+    if (single?.data?.signedUrl) {
+      return single.data.signedUrl as string;
+    }
+  } catch {}
+  // 1c) fallback por download com token de sessão (gera blob URL)
+  try {
+    const dl: any = await withTimeout(
+      (supabase as any).storage.from('receipts').download(storagePath),
+      15000
+    );
+    if (dl?.data instanceof Blob) {
+      return URL.createObjectURL(dl.data);
+    }
+  } catch {}
   // 2) fallback: localizar arquivo via list no diretório e assinar com nome exato
   try {
     const lastSlash = storagePath.lastIndexOf('/');
@@ -215,6 +235,22 @@ export const getSignedUrl = async (storagePath: string) => {
       );
       if (alt?.data && Array.isArray(alt.data) && alt.data[0]?.signedUrl) {
         return alt.data[0].signedUrl as string;
+      }
+      // fallback adicional com createSignedUrl simples
+      const altSingle: any = await withTimeout(
+        (supabase as any).storage.from('receipts').createSignedUrl(altPath, 60 * 10),
+        10000
+      );
+      if (altSingle?.data?.signedUrl) {
+        return altSingle.data.signedUrl as string;
+      }
+      // fallback final: download com sessão
+      const dl2: any = await withTimeout(
+        (supabase as any).storage.from('receipts').download(altPath),
+        15000
+      );
+      if (dl2?.data instanceof Blob) {
+        return URL.createObjectURL(dl2.data);
       }
     }
   } catch {}
