@@ -3,22 +3,30 @@ import { withTimeout, retry, withReconnect } from "@/lib/utils";
 
 export const fetchPurchaseOrders = async (userId?: string, isAdmin?: boolean) => {
   return withReconnect(async () => {
-    let query = (supabase as any)
+    console.log('Iniciando busca de pedidos de compra...');
+    let query = supabase
       .from("purchase_orders")
       .select("*, users:user_id(name)")
       .order("submitted_date", { ascending: false });
+    
     if (!isAdmin && userId) {
       query = query.eq("user_id", userId);
     }
+    
+    console.log('Executando query para pedidos...');
     const { data, error } = await query;
+    
     if (error) throw error;
+    
     // Preencher user_name
     const pedidos = (data || []).map((p: any) => ({
       ...p,
       user_name: p.users?.name || "-"
     }));
+    
+    console.log(`Pedidos carregados: ${pedidos.length} itens`);
     return pedidos;
-  });
+  }, 5, 2000); // Mais tentativas com delay maior
 };
 
 export const uploadPurchaseOrderReceipt = async (purchaseOrderId: string, file: File) => {

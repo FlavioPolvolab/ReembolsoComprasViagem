@@ -6,10 +6,10 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // Helpers de estabilidade de rede melhorados
-export async function withTimeout<T>(promise: Promise<T>, ms = 15000): Promise<T> {
+export async function withTimeout<T>(promise: Promise<T>, ms = 30000): Promise<T> {
   let timeout: NodeJS.Timeout
   const timer = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error('Tempo de resposta excedido. Verifique sua conexão.')), ms)
+    timeout = setTimeout(() => reject(new Error('Tempo de resposta excedido. Verifique sua conexão e tente novamente.')), ms)
   })
   try {
     return await Promise.race([promise, timer]) as T
@@ -18,7 +18,7 @@ export async function withTimeout<T>(promise: Promise<T>, ms = 15000): Promise<T
   }
 }
 
-export function retry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 1000): Promise<T> {
+export function retry<T>(fn: () => Promise<T>, attempts = 5, delayMs = 1000): Promise<T> {
   return fn().catch(err => {
     if (attempts <= 0) {
       console.error('Todas as tentativas de retry falharam:', err);
@@ -32,14 +32,14 @@ export function retry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 1000): Pr
 // Função para executar operações com reconexão automática
 export async function withReconnect<T>(
   operation: () => Promise<T>,
-  maxAttempts = 3,
+  maxAttempts = 5,
   baseDelay = 1000
 ): Promise<T> {
   let lastError: Error;
   
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await withTimeout(operation(), 15000);
+      return await withTimeout(operation(), 30000);
     } catch (error: any) {
       lastError = error;
       
@@ -49,10 +49,12 @@ export async function withReconnect<T>(
         error.message?.includes('network') ||
         error.message?.includes('timeout') ||
         error.message?.includes('Tempo de resposta excedido') ||
+        error.message?.includes('NetworkError') ||
+        error.message?.includes('Failed to fetch') ||
         error.code === 'PGRST301' // Supabase connection error
       ) {
         if (attempt < maxAttempts) {
-          const delay = baseDelay * Math.pow(2, attempt - 1);
+          const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 10000); // Max 10s delay
           console.log(`Tentativa ${attempt} falhou, tentando novamente em ${delay}ms`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
@@ -65,4 +67,3 @@ export async function withReconnect<T>(
   }
   
   throw lastError!;
-}

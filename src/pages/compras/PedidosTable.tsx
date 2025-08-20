@@ -31,10 +31,13 @@ const PedidosTable: React.FC = () => {
     if (!user) return;
     setIsLoading(true);
     setLoadError(null);
+    console.log('Iniciando carregamento de pedidos...');
     try {
       const data = await fetchPurchaseOrders(user.id, isAdmin);
+      console.log('Pedidos carregados com sucesso:', data?.length || 0);
       setPedidos(data || []);
     } catch (error: any) {
+      console.error('Erro ao carregar pedidos:', error);
       setLoadError(error);
     } finally {
       setIsLoading(false);
@@ -245,13 +248,36 @@ const PedidosTable: React.FC = () => {
             <div className="text-center">
               <h3 className="text-lg font-semibold">Erro ao carregar pedidos</h3>
               <p className="text-muted-foreground">
-                {loadError.message || "Não foi possível carregar os pedidos."}
+                {loadError.message?.includes('Tempo de resposta excedido') 
+                  ? "Conexão lenta ou instável. Verifique sua internet e tente novamente."
+                  : loadError.message || "Não foi possível carregar os pedidos."
+                }
+              </p>
+              <p className="text-sm text-gray-500 mt-2">
+                Se o problema persistir, tente atualizar a página ou verificar sua conexão.
               </p>
             </div>
-            <Button onClick={loadPedidos}>
+            <div className="flex gap-2">
+              <Button onClick={loadPedidos}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Tentar novamente
+              </Button>
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Recarregar página
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="flex items-center justify-center p-12">
+            <div className="text-center space-y-4">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Tentar novamente
-            </Button>
+              <div>Carregando pedidos...</div>
+              <div className="text-sm text-muted-foreground">
+                Aguarde enquanto buscamos os dados...
+              </div>
+            </div>
           </div>
         )}
 
