@@ -43,7 +43,7 @@ export type TripReceipt = {
 
 export const fetchTrips = async (userId?: string, isAdmin?: boolean) => {
   try {
-    let query = supabase
+    let query = (supabase as any)
       .from("trips_view")
       .select("*")
       .order("created_at", { ascending: false });

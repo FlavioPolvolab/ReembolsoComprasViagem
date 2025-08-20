@@ -44,7 +44,7 @@ const PedidosTable: React.FC = () => {
       }
       
       const data = await fetchPurchaseOrders(user.id, isAdmin);
-      setPedidos(data || []);
+      setPedidos((data || []) as any);
     } catch (error: any) {
       setLoadError(error);
       console.error("Erro ao carregar pedidos:", error);

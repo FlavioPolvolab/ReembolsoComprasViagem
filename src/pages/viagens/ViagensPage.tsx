@@ -58,7 +58,7 @@ const ViagensPage: React.FC = () => {
       }
       
       const data = await fetchTrips(user.id, isAdmin);
-      setTrips(data || []);
+      setTrips((data || []) as any);
     } catch (error: any) {
       setLoadError(error);
       console.error("Erro ao carregar viagens:", error);
@@ -190,10 +190,6 @@ const ViagensPage: React.FC = () => {
                 </p>
               </div>
               <Button onClick={() => refetch()} disabled={!isConnected || !isOnline}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Tentar novamente
-              </Button>
-              <Button onClick={loadTrips}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Tentar novamente
               </Button>

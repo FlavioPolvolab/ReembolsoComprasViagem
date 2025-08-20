@@ -31,7 +31,7 @@ export interface Receipt {
 
 export const fetchExpenses = async (filters: any = {}) => {
   try {
-    let query = supabase.from("expenses_view").select("*");
+    let query = (supabase as any).from("expenses_view").select("*");
 
     if (filters.search) {
       query = query.or(

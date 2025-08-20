@@ -61,7 +61,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       console.log("Criando pedido com total:", total);
       
       const { data, error: insertError } = await supabase
-        .from("purchase_orders")
+        .from("purchase_orders" as any)
         .insert({
           title,
           description,
@@ -82,7 +82,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       for (const item of items) {
         console.log("Salvando item:", item);
         const { error: itemError } = await supabase
-          .from("purchase_order_items")
+          .from("purchase_order_items" as any)
           .insert({
             purchase_order_id: data.id,
             name: item.name,
@@ -115,7 +115,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           
           // Registrar no banco
           const { error: dbError } = await supabase
-            .from("purchase_order_receipts")
+            .from("purchase_order_receipts" as any)
             .insert({
               purchase_order_id: data.id,
               file_name: file.name,

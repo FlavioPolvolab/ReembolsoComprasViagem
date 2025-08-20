@@ -3,7 +3,7 @@ import { withTimeout, simpleRetry } from "@/lib/utils";
 
 export const fetchPurchaseOrders = async (userId?: string, isAdmin?: boolean) => {
   try {
-    let query = supabase
+    let query = (supabase as any)
       .from("purchase_orders_view")
       .select("*")
       .order("submitted_date", { ascending: false });
