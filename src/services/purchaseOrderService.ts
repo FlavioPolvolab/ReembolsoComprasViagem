@@ -169,7 +169,7 @@ export const deletePurchaseOrder = async (orderId: string, deleterId: string) =>
       (supabase as any).rpc("delete_purchase_order", {
         order_id: orderId,
         deleter_id: deleterId,
-      }),
+      }) as Promise<any>,
       8000
     );
     if (error) throw error;

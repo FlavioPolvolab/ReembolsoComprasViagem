@@ -144,10 +144,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } else {
         console.log("Perfil de usuário carregado:", data);
         // Corrigir para aceitar tanto roles (array) quanto role (string)
-        const roles = (data as any).roles || (data?.role ? [data.role] : []);
+        const roles = data?.roles || (data?.role ? [data.role] : []);
         setProfile(data);
         setIsAdmin(data?.role === "admin" || (Array.isArray(data?.roles) && data.roles.includes("admin")));
-        setUserRoles(data?.roles || (data?.role ? [data.role] : []));
+        setUserRoles((data?.roles || (data?.role ? [data.role] : [])) as UserRole[]);
       }
     } catch (error) {
       console.error("Erro ao buscar perfil do usuário:", error);

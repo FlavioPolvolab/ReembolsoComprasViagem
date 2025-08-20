@@ -200,7 +200,7 @@ export const uploadTripReceipt = async (tripId: string, expenseId: string, file:
           file_type: file.type,
           file_size: file.size,
           storage_path: fileName,
-        }),
+        }) as Promise<any>,
       8000
     );
     if (dbError) throw dbError;
@@ -219,7 +219,7 @@ export const fetchTripReceipts = async (expenseId: string) => {
         .from("trip_receipts")
         .select("*")
         .eq("trip_expense_id", expenseId)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false }) as Promise<any>,
       8000
     );
     if (error) throw error;
@@ -233,7 +233,7 @@ export const fetchTripReceipts = async (expenseId: string) => {
 export const getSignedUrl = async (storagePath: string) => {
   try {
     const { data, error } = await withTimeout(
-      (supabase as any).storage.from('receipts').createSignedUrl(storagePath, 60 * 10),
+      (supabase as any).storage.from('receipts').createSignedUrl(storagePath, 60 * 10) as Promise<any>,
       8000
     );
     if (error) throw error;
@@ -251,7 +251,7 @@ export const closeTrip = async (tripId: string, userId: string) => {
       (supabase as any).rpc("close_trip", {
         trip_id: tripId,
         closer_id: userId,
-      }),
+      }) as Promise<any>,
       8000
     );
     if (error) throw error;
@@ -269,7 +269,7 @@ export const closeTripWithNote = async (tripId: string, userId: string, note?: s
         trip_id: tripId,
         closer_id: userId,
         note: note || null,
-      }),
+      }) as Promise<any>,
       8000
     );
     if (error) throw error;
@@ -286,7 +286,7 @@ export const deleteTripDeep = async (tripId: string) => {
       (supabase as any)
         .from("trip_expenses")
         .select("id")
-        .eq("trip_id", tripId),
+        .eq("trip_id", tripId) as Promise<any>,
       8000
     );
     if (expErr) throw expErr;
@@ -297,7 +297,7 @@ export const deleteTripDeep = async (tripId: string) => {
         (supabase as any)
           .from("trip_receipts")
           .select("storage_path")
-          .eq("trip_expense_id", exp.id),
+          .eq("trip_expense_id", exp.id) as Promise<any>,
         8000
       );
       if (recErr) throw recErr;
@@ -306,20 +306,20 @@ export const deleteTripDeep = async (tripId: string) => {
 
     if (paths.length > 0) {
       const { error: rmErr } = await withTimeout(
-        (supabase as any).storage.from("receipts").remove(paths),
+        (supabase as any).storage.from("receipts").remove(paths) as Promise<any>,
         15000
       );
       if (rmErr) throw rmErr;
     }
 
     const { error: delExpErr } = await withTimeout(
-      (supabase as any).from("trip_expenses").delete().eq("trip_id", tripId),
+      (supabase as any).from("trip_expenses").delete().eq("trip_id", tripId) as Promise<any>,
       8000
     );
     if (delExpErr) throw delExpErr;
 
     const { error: delTripErr } = await withTimeout(
-      (supabase as any).from("trips").delete().eq("id", tripId),
+      (supabase as any).from("trips").delete().eq("id", tripId) as Promise<any>,
       8000
     );
     if (delTripErr) throw delTripErr;
@@ -337,7 +337,7 @@ export const updateTrip = async (
 ) => {
   try {
     const { error } = await withTimeout(
-      (supabase as any).from("trips").update(changes).eq("id", tripId),
+      (supabase as any).from("trips").update(changes).eq("id", tripId) as Promise<any>,
       8000
     );
     if (error) throw error;

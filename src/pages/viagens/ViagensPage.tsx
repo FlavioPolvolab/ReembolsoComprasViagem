@@ -189,7 +189,7 @@ const ViagensPage: React.FC = () => {
                   {loadError.message || "Não foi possível carregar as viagens."}
                 </p>
               </div>
-              <Button onClick={() => refetch()} disabled={!isConnected || !isOnline}>
+              <Button onClick={loadTrips} disabled={isLoading}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Tentar novamente
               </Button>

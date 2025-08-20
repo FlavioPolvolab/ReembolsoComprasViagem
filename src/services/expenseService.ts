@@ -78,7 +78,7 @@ export const fetchExpenses = async (filters: any = {}) => {
 export const fetchExpenseById = async (id: string) => {
   try {
     const { data, error } = await withTimeout(
-      supabase
+      (supabase as any)
         .from("expenses")
         .select(`
           *,
@@ -88,7 +88,7 @@ export const fetchExpenseById = async (id: string) => {
           receipts (*)
         `)
         .eq("id", id)
-        .single(),
+        .single() as Promise<any>,
       8000
     );
 
@@ -107,7 +107,7 @@ export const fetchExpenseById = async (id: string) => {
 export const createExpense = async (expense: Expense, files: File[]) => {
   try {
     const { data: expenseData, error: expenseError } = await withTimeout(
-      supabase.from("expenses").insert([expense]).select().single(),
+      (supabase as any).from("expenses").insert([expense]).select().single() as Promise<any>,
       8000
     );
 
@@ -144,7 +144,7 @@ export const createExpense = async (expense: Expense, files: File[]) => {
       );
 
       const { error: receiptsError } = await withTimeout(
-        supabase.from("receipts").insert(receipts),
+        (supabase as any).from("receipts").insert(receipts) as Promise<any>,
         8000
       );
 
@@ -281,7 +281,7 @@ export const deleteExpense = async (id: string) => {
     }
     
     const { error } = await withTimeout(
-      supabase.from("expenses").delete().eq("id", id),
+      (supabase as any).from("expenses").delete().eq("id", id) as Promise<any>,
       8000
     );
       
