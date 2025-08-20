@@ -61,6 +61,69 @@ export const fetchTrips = async (userId?: string, isAdmin?: boolean) => {
   }
 };
 
+export const createExpense = async (expense: {
+  name: string;
+  description: string;
+  amount: number;
+  purpose: string;
+  cost_center_id: string;
+  category_id: string;
+  payment_date: string;
+  user_id: string;
+}, files: File[] = []) => {
+  try {
+    // Primeiro, criar a despesa
+    const { data: expenseData, error: expenseError } = await withTimeout(
+      (supabase as any).from("expenses").insert([expense]).select().single() as Promise<any>,
+      8000
+    );
+    if (expenseError) throw expenseError;
+
+    // Se há arquivos, fazer upload e criar registros de comprovantes
+    if (files.length > 0) {
+      const receipts = [];
+      
+      for (const file of files) {
+        // Normalizar nome do arquivo
+        const baseName = file.name
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-zA-Z0-9._-]+/g, '_')
+          .replace(/_+/g, '_')
+          .slice(0, 150);
+        const fileName = `expenses/${expenseData.id}/${Date.now()}_${baseName}`;
+        
+        // Upload do arquivo
+        const { error: uploadError } = await withTimeout(
+          (supabase as any).storage.from("receipts").upload(fileName, file) as Promise<any>,
+          15000
+        );
+        if (uploadError) throw uploadError;
+        
+        // Adicionar dados do comprovante
+        receipts.push({
+          expense_id: expenseData.id,
+          file_name: file.name,
+          file_type: file.type,
+          file_size: file.size,
+          storage_path: fileName,
+        });
+      }
+      
+      // Inserir registros dos comprovantes
+      const { error: receiptsError } = await withTimeout(
+        (supabase as any).from("receipts").insert(receipts) as Promise<any>,
+        8000
+      );
+      if (receiptsError) throw receiptsError;
+    }
+    
+    return expenseData;
+  } catch (error) {
+    console.error("Erro ao criar despesa:", error);
+    throw error;
+  }
+};
+
 export const createTrip = async (trip: {
   title: string;
   description?: string;
@@ -176,34 +239,6 @@ export const deleteTripExpense = async (expenseId: string) => {
   }
 };
 
-export const fetchCategories = async () => {
-  try {
-    const { data, error } = await withTimeout(
-      (supabase as any).from("categories").select("*").order("name") as Promise<any>,
-      8000
-    );
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error("Erro ao buscar categorias:", error);
-    throw error;
-  }
-};
-
-export const fetchCostCenters = async () => {
-  try {
-    const { data, error } = await withTimeout(
-      (supabase as any).from("cost_centers").select("*").order("name") as Promise<any>,
-      8000
-    );
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error("Erro ao buscar centros de custo:", error);
-    throw error;
-  }
-};
-
 export const uploadTripReceipt = async (tripId: string, expenseId: string, file: File) => {
   try {
     const baseName = file.name
@@ -214,7 +249,7 @@ export const uploadTripReceipt = async (tripId: string, expenseId: string, file:
     const fileName = `trips/${tripId}/${expenseId}/${Date.now()}_${baseName}`;
     
     const { error: uploadError } = await withTimeout(
-      (supabase as any).storage.from("receipts").upload(fileName, file),
+      (supabase as any).storage.from("receipts").upload(fileName, file) as Promise<any>,
       15000
     );
     if (uploadError) throw uploadError;
