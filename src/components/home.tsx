@@ -17,7 +17,7 @@ import ExpenseTable from "./ExpenseTable";
 import FilterBar from "./FilterBar";
 import ExpenseForm from "@/components/ExpenseForm";
 import ExpenseDetail from "./ExpenseDetail";
-import { fetchExpenses, approveExpense, rejectExpense, updateExpense, deleteExpense } from "@/services/expenseService";
+import { fetchExpenses, fetchExpensesTest, testExpensesView, approveExpense, rejectExpense, updateExpense, deleteExpense } from "@/services/expenseService";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import UserRegisterTab from "@/components/admin/UserRegisterTab";
@@ -60,21 +60,42 @@ const Home = () => {
         }
       }
       
-      const data = await fetchExpenses(filters);
-      const formattedData = (data || []).map((expense: any) => ({
-        id: expense.id,
-        user_id: expense.user_id,
-        name: expense.user_name || "Desconhecido",
-        description: expense.description,
-        amount: expense.amount,
-        status: expense.status,
-        payment_status: expense.payment_status || "pending",
-        date: expense.submitted_date,
-        purpose: expense.purpose,
-        costCenter: expense.cost_center_name || "",
-        category: expense.category_name || "",
-        paymentDate: expense.payment_date,
-      }));
+      // Verificar dados das tabelas relacionadas
+      const { data: categories } = await supabase.from("categories").select("*");
+      const { data: costCenters } = await supabase.from("cost_centers").select("*");
+      console.log("Categorias disponíveis:", categories);
+      console.log("Centros de custo disponíveis:", costCenters);
+      
+      // Testar ambas as abordagens
+      const dataView = await fetchExpenses(filters);
+      const dataTest = await fetchExpensesTest(filters);
+      const dataRPC = await testExpensesView();
+      
+      console.log("Dados da view:", dataView);
+      console.log("Dados do teste (query direta):", dataTest);
+      console.log("Dados da função RPC:", dataRPC);
+      
+      // Usar os dados da view por enquanto
+      const data = dataView;
+      console.log("Dados brutos da view:", data);
+      const formattedData = (data || []).map((expense: any) => {
+        const formatted = {
+          id: expense.id,
+          user_id: expense.user_id,
+          name: expense.user_name || "Desconhecido",
+          description: expense.description,
+          amount: expense.amount,
+          status: expense.status,
+          payment_status: expense.payment_status || "pending",
+          date: expense.submitted_date,
+          purpose: expense.purpose,
+          costCenter: expense.cost_center_name || "",
+          category: expense.category_name || "",
+          paymentDate: expense.payment_date,
+        };
+        console.log("Expense formatada:", formatted);
+        return formatted;
+      });
       setExpenses(formattedData);
     } catch (error: any) {
       setLoadError(error);

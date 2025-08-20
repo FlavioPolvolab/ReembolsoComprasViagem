@@ -26,13 +26,7 @@ export interface Receipt {
 }
 
 export const fetchExpenses = async (filters: any = {}) => {
-  let query = (supabase as any).from("expenses").select(`
-    *,
-    users:user_id (name, email),
-    cost_centers:cost_center_id (name),
-    categories:category_id (name),
-    receipts (*)
-  `);
+  let query = (supabase as any).from("expenses_view").select("*");
 
   // Aplicar filtros
   if (filters.search) {
@@ -46,11 +40,11 @@ export const fetchExpenses = async (filters: any = {}) => {
   }
 
   if (filters.category) {
-    query = query.eq("category_id", filters.category);
+    query = query.eq("category_name", filters.category);
   }
 
   if (filters.costCenter) {
-    query = query.eq("cost_center_id", filters.costCenter);
+    query = query.eq("cost_center_name", filters.costCenter);
   }
 
   if (filters.dateRange?.from) {
@@ -270,6 +264,66 @@ export const deleteExpenseDeep = async (id: string) => {
     if (error) throw error;
   } catch (error) {
     console.error("Erro ao excluir despesa:", error);
+    throw error;
+  }
+};
+
+export const fetchExpensesTest = async (filters: any = {}) => {
+  let query = (supabase as any).from("expenses").select(`
+    *,
+    users:user_id (name, email),
+    cost_centers:cost_center_id (name),
+    categories:category_id (name),
+    receipts (*)
+  `);
+
+  // Aplicar filtros
+  if (filters.search) {
+    query = query.or(
+      `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`,
+    );
+  }
+
+  if (filters.status) {
+    query = query.eq("status", filters.status);
+  }
+
+  if (filters.category) {
+    query = query.eq("category_id", filters.category);
+  }
+
+  if (filters.costCenter) {
+    query = query.eq("cost_center_id", filters.costCenter);
+  }
+
+  if (filters.dateRange?.from) {
+    query = query.gte("submitted_date", filters.dateRange.from.toISOString());
+  }
+
+  if (filters.dateRange?.to) {
+    query = query.lte("submitted_date", filters.dateRange.to.toISOString());
+  }
+
+  // Ordenar por data de envio, mais recentes primeiro
+  query = query.order("submitted_date", { ascending: false });
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Erro ao buscar despesas (teste):", error);
+    throw error;
+  }
+
+  return data;
+};
+
+export const testExpensesView = async () => {
+  try {
+    const { data, error } = await (supabase as any).rpc('test_expenses_view');
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error("Erro ao testar view:", error);
     throw error;
   }
 };

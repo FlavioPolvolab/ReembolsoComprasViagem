@@ -146,7 +146,63 @@ ALTER VIEW purchase_orders_view OWNER TO postgres;
 ALTER VIEW trips_view OWNER TO postgres;
 ALTER VIEW trip_expenses_view OWNER TO postgres;
 
+-- Habilitar RLS nas views
+ALTER VIEW expenses_view SET (security_invoker = true);
+ALTER VIEW purchase_orders_view SET (security_invoker = true);
+ALTER VIEW trips_view SET (security_invoker = true);
+ALTER VIEW trip_expenses_view SET (security_invoker = true);
+
 -- Criar índices para melhorar performance das views
 CREATE INDEX IF NOT EXISTS idx_expenses_view_user_status ON expenses (user_id, status, submitted_date DESC);
 CREATE INDEX IF NOT EXISTS idx_purchase_orders_view_user_status ON purchase_orders (user_id, status, submitted_date DESC);
 CREATE INDEX IF NOT EXISTS idx_trips_view_user_status ON trips (user_id, status, created_at DESC);
+
+-- Função para testar a view expenses_view
+CREATE OR REPLACE FUNCTION test_expenses_view()
+RETURNS TABLE (
+  id uuid,
+  user_id uuid,
+  name text,
+  description text,
+  amount numeric,
+  purpose text,
+  payment_date date,
+  status text,
+  payment_status text,
+  submitted_date timestamptz,
+  user_name text,
+  user_email text,
+  cost_center_name text,
+  category_name text,
+  receipts_count bigint
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    e.id,
+    e.user_id,
+    e.name,
+    e.description,
+    e.amount,
+    e.purpose,
+    e.payment_date,
+    e.status,
+    e.payment_status,
+    e.submitted_date,
+    u.name as user_name,
+    u.email as user_email,
+    cc.name as cost_center_name,
+    cat.name as category_name,
+    COUNT(r.id) as receipts_count
+  FROM expenses e
+  LEFT JOIN users u ON e.user_id = u.id
+  LEFT JOIN cost_centers cc ON e.cost_center_id = cc.id
+  LEFT JOIN categories cat ON e.category_id = cat.id
+  LEFT JOIN receipts r ON e.id = r.expense_id
+  GROUP BY 
+    e.id, e.user_id, e.name, e.description, e.amount, e.purpose, 
+    e.payment_date, e.status, e.payment_status, e.submitted_date,
+    u.name, u.email, cc.name, cat.name
+  ORDER BY e.submitted_date DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
