@@ -46,17 +46,6 @@ const ViagensPage: React.FC = () => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      // Recarregar perfil do usuário primeiro
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (currentUser) {
-        const { data: profileData } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", currentUser.id)
-          .single();
-        console.log("Perfil recarregado:", profileData);
-      }
-      
       const data = await fetchTrips(user.id, isAdmin);
       setTrips(data || []);
     } catch (error: any) {
