@@ -163,10 +163,9 @@ export const deleteTripExpense = async (expenseId: string) => {
   try {
     const { error } = await withTimeout(
       (supabase as any)
-      (supabase as any)
         .from("trip_expenses")
         .delete()
-        .eq("id", expenseId) as Promise<any>,
+        .eq("id", expenseId),
       8000
     );
     if (error) throw error;
@@ -187,7 +186,7 @@ export const uploadTripReceipt = async (tripId: string, expenseId: string, file:
     const fileName = `trips/${tripId}/${expenseId}/${Date.now()}_${baseName}`;
     
     const { error: uploadError } = await withTimeout(
-      (supabase as any).storage.from("receipts").upload(fileName, file),
+      (supabase as any).storage.from("receipts").upload(fileName, file) as Promise<any>,
       15000
     );
     if (uploadError) throw uploadError;
