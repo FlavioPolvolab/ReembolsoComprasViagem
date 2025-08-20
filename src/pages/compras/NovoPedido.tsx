@@ -40,10 +40,12 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
+    console.log("handleSubmit chamado");
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
+      console.log("Verificando usuário e itens", { user, items });
       if (!user) throw new Error("Usuário não autenticado");
       if (items.length === 0) throw new Error("Adicione pelo menos um item ao pedido.");
       // 1. Criar pedido
@@ -51,6 +53,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         const preco = Number(item.price);
         return sum + (isNaN(preco) ? 0 : preco * item.quantity);
       }, 0);
+      console.log("Enviando insert para purchase_orders", { title, description, total, userId: user.id });
       const { data, error: insertError } = await (supabase as any)
         .from("purchase_orders")
         .insert({
@@ -61,9 +64,11 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         })
         .select()
         .single();
+      console.log("Resposta do insert purchase_orders", { data, insertError });
       if (insertError) throw insertError;
       // 2. Salvar itens
       for (const item of items) {
+        console.log("Inserindo item", item);
         const { error: itemError } = await (supabase as any)
           .from("purchase_order_items")
           .insert({
@@ -80,7 +85,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           const fileExt = file.name.split(".").pop();
           const fileName = `${data.id}/${Date.now()}_${file.name}`;
           const filePath = `${fileName}`;
-          // Upload para o bucket receipts
+          console.log("Fazendo upload do arquivo", file.name);
           const { error: uploadError } = await (supabase as any).storage
             .from("receipts")
             .upload(filePath, file);
@@ -102,6 +107,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       onOpenChange(false);
     } catch (err: any) {
       setError(err.message || "Erro ao criar pedido");
+      console.error("Erro ao criar pedido:", err);
     } finally {
       setLoading(false);
     }
@@ -112,6 +118,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       <DialogContent className="max-w-2xl w-full p-8 sm:rounded-xl">
         <DialogHeader>
           <DialogTitle>Novo Pedido de Compra</DialogTitle>
+          <DialogDescription>Preencha os campos abaixo para criar um novo pedido de compra.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 max-h-[70vh] overflow-y-auto">
           <div>
