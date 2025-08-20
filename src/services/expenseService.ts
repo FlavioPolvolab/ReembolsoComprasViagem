@@ -144,7 +144,7 @@ export const createExpense = async (expense: Expense, files: File[]) => {
       );
 
       const { error: receiptsError } = await withTimeout(
-        (supabase as any).from("receipts").insert(receipts) as Promise<any>,
+        supabase.from("receipts").delete().eq("expense_id", id) as Promise<any>,
         8000
       );
 

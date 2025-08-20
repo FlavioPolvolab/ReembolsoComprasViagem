@@ -152,7 +152,7 @@ export const rejectPurchaseOrder = async (orderId: string, rejectorId: string, r
         order_id: orderId,
         rejector_id: rejectorId,
         reason,
-      }),
+      }) as Promise<any>,
       8000
     );
     if (error) throw error;

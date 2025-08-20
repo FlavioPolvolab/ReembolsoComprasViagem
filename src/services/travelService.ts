@@ -128,7 +128,7 @@ export const addTripExpense = async (expense: {
         .from("trip_expenses")
         .insert({ ...expense })
         .select()
-        .single(),
+        .single() as Promise<any>,
       8000
     );
     if (error) throw error;
