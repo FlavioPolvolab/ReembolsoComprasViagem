@@ -12,7 +12,7 @@ export const fetchPurchaseOrders = async (userId?: string, isAdmin?: boolean) =>
       query = query.eq("user_id", userId);
     }
     
-    const { data, error } = await withTimeout(query, 8000);
+    const { data, error } = await withTimeout(query, 15000);
     if (error) throw error;
     
     const pedidos = (data || []).map((p: any) => ({
