@@ -163,9 +163,10 @@ export const deleteTripExpense = async (expenseId: string) => {
   try {
     const { error } = await withTimeout(
       (supabase as any)
+      (supabase as any)
         .from("trip_expenses")
         .delete()
-        .eq("id", expenseId),
+        .eq("id", expenseId) as Promise<any>,
       8000
     );
     if (error) throw error;
