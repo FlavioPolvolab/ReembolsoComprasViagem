@@ -1,507 +1,349 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
-import {
-  PlusCircle,
-  FileText,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Loader2,
-  LogOut,
-  RefreshCw,
-} from "lucide-react";
-import ExpenseTable from "./ExpenseTable";
-import FilterBar from "./FilterBar";
-import ExpenseForm from "@/components/ExpenseForm";
-import ExpenseDetail from "./ExpenseDetail";
-import { fetchExpenses, approveExpense, rejectExpense, updateExpense, deleteExpense } from "@/services/expenseService";
-import { useToast } from "@/components/ui/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
-import UserRegisterTab from "@/components/admin/UserRegisterTab";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useNavigate } from "react-router-dom";
+import { withTimeout, simpleRetry } from "@/lib/utils";
 
-const Home = () => {
-  const [activeTab, setActiveTab] = useState("pending");
-  const [showExpenseForm, setShowExpenseForm] = useState(false);
-  const [showExpenseDetail, setShowExpenseDetail] = useState(false);
-  const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
-  const [filters, setFilters] = useState<{
-    search: string;
-    status?: string;
-    category?: string;
-    costCenter?: string;
-    dateRange?: { from: Date | undefined; to: Date | undefined };
-  }>({ search: "" });
-  const { toast } = useToast();
-  const { isAdmin, user, signOut, hasRole } = useAuth();
-  const navigate = useNavigate();
-  const [expenses, setExpenses] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadError, setLoadError] = useState<Error | null>(null);
-
-  const loadExpenses = useCallback(async () => {
-    setIsLoading(true);
-    setLoadError(null);
-    try {
-      // Recarregar perfil do usuário primeiro
-      if (user) {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        if (currentUser) {
-          const { data: profileData } = await supabase
-            .from("users")
-            .select("*")
-            .eq("id", currentUser.id)
-            .single();
-          console.log("Perfil recarregado:", profileData);
-        }
-      }
-      
-      const data = await fetchExpenses(filters);
-      const formattedData = (data || []).map((expense: any) => ({
-        id: expense.id,
-        user_id: expense.user_id,
-        name: expense.user_name || "Desconhecido",
-        description: expense.description,
-        amount: expense.amount,
-        status: expense.status,
-        payment_status: expense.payment_status || "pending",
-        date: expense.submitted_date,
-        purpose: expense.purpose,
-        costCenter: expense.cost_center_name || "",
-        category: expense.category_name || "",
-        paymentDate: expense.payment_date,
-      }));
-      setExpenses(formattedData);
-    } catch (error: any) {
-      setLoadError(error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filters]);
-
-  useEffect(() => {
-    loadExpenses();
-  }, [loadExpenses]);
-
-  const handleRefresh = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      // Recarregar perfil do usuário
-      if (user) {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        if (currentUser) {
-          const { data: profileData } = await supabase
-            .from("users")
-            .select("*")
-            .eq("id", currentUser.id)
-            .single();
-          console.log("Perfil recarregado no refresh:", profileData);
-        }
-      }
-      
-      // Recarregar dados
-      await loadExpenses();
-      toast({
-        title: "Sucesso",
-        description: "Dados atualizados com sucesso!",
-      });
-    } catch (error) {
-      console.error("Erro no refresh:", error);
-      toast({
-        title: "Erro",
-        description: "Erro ao atualizar dados",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadExpenses, toast]);
-
-  const handleViewDetails = (expense) => {
-    setSelectedExpenseId(expense.id);
-    setShowExpenseDetail(true);
-  };
-
-  const handleCreateExpense = () => {
-    setShowExpenseForm(true);
-  };
-
-  const handleCloseForm = () => {
-    setShowExpenseForm(false);
-    loadExpenses();
-  };
-
-  const handleCloseDetail = () => {
-    setShowExpenseDetail(false);
-    setSelectedExpenseId(null);
-    loadExpenses();
-  };
-
-  const handleApprove = async (expense) => {
-    // Esta função não é usada diretamente aqui, mas é passada para o ExpenseTable
-    // A aprovação real acontece no componente ExpenseDetail
-  };
-
-  const handleReject = async (expense) => {
-    // Esta função não é usada diretamente aqui, mas é passada para o ExpenseTable
-    // A rejeição real acontece no componente ExpenseDetail
-  };
-
-  const handleFilterChange = (newFilters) => {
-    setFilters(newFilters);
-  };
-
-  const handleStatusChange = () => {
-    loadExpenses();
-  };
-
-  const handleDelete = async (expense) => {
-    if (!window.confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) return;
-    try {
-      await deleteExpense(expense.id);
-      toast({
-        title: "Sucesso",
-        description: "Despesa excluída com sucesso!",
-      });
-      loadExpenses();
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Não foi possível excluir a despesa.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleMarkPaid = async (expense) => {
-    try {
-      await updateExpense(expense.id, { payment_status: "paid" });
-      toast({
-        title: "Sucesso",
-        description: "Despesa marcada como paga!",
-      });
-      loadExpenses();
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Não foi possível marcar como paga.",
-        variant: "destructive",
-      });
-    }
-  };
-  // Memoize os dados filtrados para evitar recálculos desnecessários
-  const filteredExpenses = useMemo(() => {
-    let result = expenses;
-    if (!isAdmin && user?.id) {
-      result = result.filter(e => e.user_id === user.id);
-    }
-    if (filters.search && filters.search.trim() !== "") {
-      const search = filters.search.trim().toLowerCase();
-      result = result.filter(e =>
-        Object.values(e).some(v =>
-          v && typeof v === "string" && v.toLowerCase().includes(search)
-        )
-      );
-    }
-    if (activeTab === "pending") result = result.filter(e => e.status === "pending");
-    if (activeTab === "approved") result = result.filter(e => e.status === "approved");
-    if (activeTab === "rejected") result = result.filter(e => e.status === "rejected");
-    return result;
-  }, [expenses, isAdmin, user?.id, filters.search, activeTab]);
-
-  // Ordenar aprovados: pendentes de pagamento primeiro
-  const filteredExpensesSorted = useMemo(() => {
-    if (activeTab === "approved") {
-      return [...filteredExpenses].sort((a, b) => {
-        if ((a.payment_status === "paid") === (b.payment_status === "paid")) return 0;
-        return a.payment_status === "paid" ? 1 : -1;
-      });
-    }
-    return filteredExpenses;
-  }, [filteredExpenses, activeTab]);
-
-  // Resumo SEMPRE com todos os dados
-  const pendingExpenses = expenses.filter((e) => e.status === "pending");
-  const approvedExpenses = expenses.filter((e) => e.status === "approved");
-  const rejectedExpenses = expenses.filter((e) => e.status === "rejected");
-  const paidExpenses = expenses.filter((e) => e.status === "approved" && e.payment_status === "paid");
-  const unpaidExpenses = expenses.filter((e) => e.status === "approved" && e.payment_status !== "paid");
-  const paidCount = paidExpenses.length;
-  const unpaidCount = unpaidExpenses.length;
-  const approvedCount = approvedExpenses.length;
-  const pendingCount = pendingExpenses.length;
-  const rejectedCount = rejectedExpenses.length;
-  const totalCount = expenses.length;
-  const paidTotal = paidExpenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const unpaidTotal = unpaidExpenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const approvedTotal = approvedExpenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const pendingTotal = pendingExpenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const rejectedTotal = rejectedExpenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalAmount = expenses.reduce((acc, curr) => acc + curr.amount, 0);
-
-  // Calcular totais em R$
-  const formatCurrency = (value: number) => {
-    return value.toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    });
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut();
-      navigate('/login');
-    } catch (error) {
-      console.error('Erro ao fazer logout:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível fazer logout. Tente novamente.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="container mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Sistema de Reembolso</h1>
-          <div className="flex gap-2 items-center">
-            <Button
-              onClick={() => navigate('/')}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              Home
-            </Button>
-            <Button
-              onClick={handleRefresh}
-              variant="outline"
-              disabled={isLoading}
-              className="flex items-center gap-2"
-            >
-              <RefreshCw className="h-5 w-5" />
-              Atualizar
-            </Button>
-            <Button
-              onClick={handleCreateExpense}
-              className="flex items-center gap-2"
-            >
-              <PlusCircle className="h-5 w-5" />
-              Novo Reembolso
-            </Button>
-            {isAdmin && (
-              <Button
-                onClick={() => setActiveTab("register")}
-                className="flex items-center gap-2"
-              >
-                <PlusCircle className="h-5 w-5" />
-                Cadastrar Usuário
-              </Button>
-            )}
-            <Button
-              type="button"
-              onClick={handleLogout}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              <LogOut className="h-5 w-5" />
-              Sair
-            </Button>
-          </div>
-        </div>
-
-        {isAdmin && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="bg-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total de Solicitações
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalCount}</div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {formatCurrency(totalAmount)}
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Pendentes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-amber-500" />
-                  <span className="text-2xl font-bold">{pendingCount}</span>
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {formatCurrency(pendingTotal)}
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Aprovados
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-2xl font-bold">{approvedCount}</span>
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {formatCurrency(approvedTotal)}
-                </div>
-                <div className="mt-2 text-xs">
-                  <span className="text-green-600">Pagos: {paidCount} ({formatCurrency(paidTotal)})</span>
-                  <br />
-                  <span className="text-amber-600">Pendentes: {unpaidCount} ({formatCurrency(unpaidTotal)})</span>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Rejeitados
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-red-500" />
-                  <span className="text-2xl font-bold">{rejectedCount}</span>
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {formatCurrency(rejectedTotal)}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        <Tabs
-          defaultValue="pending"
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="w-full"
-        >
-          <TabsList className="grid w-full grid-cols-3 mb-4">
-            <TabsTrigger value="pending" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Pendentes
-            </TabsTrigger>
-            <TabsTrigger value="approved" className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4" />
-              Aprovados
-            </TabsTrigger>
-            <TabsTrigger value="rejected" className="flex items-center gap-2">
-              <XCircle className="h-4 w-4" />
-              Rejeitados
-            </TabsTrigger>
-          </TabsList>
-
-          <FilterBar onFilterChange={setFilters} />
-
-          {isLoading ? (
-            <div className="flex items-center justify-center p-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <span className="ml-2">
-                Carregando despesas...
-              </span>
-            </div>
-          ) : loadError ? (
-            <div className="flex flex-col items-center justify-center p-12 space-y-4">
-              <XCircle className="h-12 w-12 text-red-500" />
-              <div className="text-center">
-                <h3 className="text-lg font-semibold">Erro ao carregar dados</h3>
-                <p className="text-muted-foreground">
-                  {loadError.message || "Não foi possível carregar as despesas."}
-                </p>
-              </div>
-              <Button onClick={handleRefresh}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Tentar novamente
-              </Button>
-            </div>
-          ) : (
-            <>
-              <TabsContent value="pending" className="mt-4">
-                <ExpenseTable
-                  expenses={filteredExpenses}
-                  onViewDetails={handleViewDetails}
-                  showPaymentStatus={false}
-                  isAdmin={isAdmin}
-                  hasRole={hasRole}
-                  onBulkAction={async (selected, action) => {
-                    await Promise.all(selected.map(e => updateExpense(e.id, { status: action === "approve" ? "approved" : "rejected" })));
-                    await loadExpenses();
-                  }}
-                  onDelete={handleDelete}
-                  onMarkPaid={handleMarkPaid}
-                />
-              </TabsContent>
-              <TabsContent value="approved" className="mt-4">
-                <ExpenseTable
-                  expenses={filteredExpensesSorted}
-                  onViewDetails={handleViewDetails}
-                  showPaymentStatus={true}
-                  isAdmin={isAdmin}
-                  hasRole={hasRole}
-                  onBulkMarkPaid={async (selected) => {
-                    await Promise.all(
-                      selected.map(e => updateExpense(e.id, { payment_status: "paid" }))
-                    );
-                    await loadExpenses();
-                  }}
-                  onMarkPaid={handleMarkPaid}
-                />
-              </TabsContent>
-              <TabsContent value="rejected" className="mt-4">
-                <ExpenseTable
-                  expenses={filteredExpenses}
-                  onViewDetails={handleViewDetails}
-                  showPaymentStatus={false}
-                  isAdmin={isAdmin}
-                  hasRole={hasRole}
-                  onMarkPaid={handleMarkPaid}
-                />
-              </TabsContent>
-              {isAdmin && activeTab === "register" && (
-                <TabsContent value="register" className="mt-4">
-                  <UserRegisterTab />
-                </TabsContent>
-              )}
-            </>
-          )}
-        </Tabs>
-      </div>
-
-      {showExpenseDetail && selectedExpenseId && (
-        <ExpenseDetail
-          expenseId={selectedExpenseId}
-          isOpen={showExpenseDetail}
-          onClose={handleCloseDetail}
-          onStatusChange={handleStatusChange}
-        />
-      )}
-
-      <Dialog open={showExpenseForm} onOpenChange={setShowExpenseForm}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Novo Reembolso</DialogTitle>
-          </DialogHeader>
-          <ExpenseForm onClose={handleCloseForm} />
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+export type Trip = {
+  id: string;
+  user_id: string;
+  title: string;
+  description?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  budget_amount: number;
+  spent_amount: number;
+  status: "open" | "closed";
+  created_at: string;
+  updated_at: string;
+  users?: { name?: string } | null;
+  cost_center_id?: string | null;
+  cost_center?: { name: string } | null;
+  close_note?: string | null;
 };
 
-export default Home;
+export type TripExpense = {
+  id: string;
+  trip_id: string;
+  description: string;
+  amount: number;
+  expense_date?: string | null;
+  category?: string | null;
+  reconciled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TripReceipt = {
+  id: string;
+  trip_expense_id: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  storage_path: string;
+  created_at: string;
+};
+
+export const fetchTrips = async (userId?: string, isAdmin?: boolean) => {
+  try {
+    let query = (supabase as any)
+      .from("trips_view")
+      .select("*")
+      .order("created_at", { ascending: false });
+    
+    if (!isAdmin && userId) {
+      query = query.eq("user_id", userId);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error("Erro ao buscar viagens:", error);
+    throw error;
+  }
+};
+
+export const createTrip = async (trip: {
+  title: string;
+  description?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  budget_amount: number;
+  user_id: string;
+  cost_center_id?: string | null;
+}) => {
+  try {
+    const { data, error } = await withTimeout(
+      (supabase as any).from("trips").insert(trip).select().single(),
+      8000
+    );
+    if (error) throw error;
+    return data as Trip;
+  } catch (error) {
+    console.error("Erro ao criar viagem:", error);
+    throw error;
+  }
+};
+
+export const deleteTrip = async (tripId: string) => {
+  try {
+    const { error } = await withTimeout(
+      (supabase as any).from("trips").delete().eq("id", tripId),
+      8000
+    );
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Erro ao deletar viagem:", error);
+    throw error;
+  }
+};
+
+export const fetchTripExpenses = async (tripId: string) => {
+  try {
+    const { data, error } = await withTimeout(
+      (supabase as any)
+        .from("trip_expenses")
+        .select("*")
+        .eq("trip_id", tripId)
+        .order("created_at", { ascending: true }),
+      8000
+    );
+    if (error) throw error;
+    return (data || []) as TripExpense[];
+  } catch (error) {
+    console.error("Erro ao buscar despesas da viagem:", error);
+    throw error;
+  }
+};
+
+export const addTripExpense = async (expense: {
+  trip_id: string;
+  description: string;
+  amount: number;
+  expense_date?: string | null;
+  category?: string | null;
+}) => {
+  try {
+    const { data, error } = await withTimeout(
+      (supabase as any)
+        .from("trip_expenses")
+        .insert({ ...expense })
+        .select()
+        .single() as Promise<any>,
+      8000
+    );
+    if (error) throw error;
+    return data as TripExpense;
+  } catch (error) {
+    console.error("Erro ao adicionar despesa:", error);
+    throw error;
+  }
+};
+
+export const updateTripExpense = async (
+  expenseId: string,
+  changes: Partial<Pick<TripExpense, "description" | "amount" | "expense_date" | "category" | "reconciled">>
+) => {
+  try {
+    const { error } = await withTimeout(
+      (supabase as any)
+        .from("trip_expenses")
+        .update(changes)
+        .eq("id", expenseId),
+      8000
+    );
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Erro ao atualizar despesa:", error);
+    throw error;
+  }
+};
+
+export const deleteTripExpense = async (expenseId: string) => {
+  try {
+    const { error } = await withTimeout(
+      (supabase as any)
+        .from("trip_expenses")
+        .delete()
+        .eq("id", expenseId),
+      8000
+    );
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Erro ao deletar despesa:", error);
+    throw error;
+  }
+};
+
+export const uploadTripReceipt = async (tripId: string, expenseId: string, file: File) => {
+  try {
+    const baseName = file.name
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 150);
+    const fileName = `trips/${tripId}/${expenseId}/${Date.now()}_${baseName}`;
+    
+    const { error: uploadError } = await withTimeout(
+      (supabase as any).storage.from("receipts").upload(fileName, file) as Promise<any>,
+      15000
+    );
+    if (uploadError) throw uploadError;
+    
+    const { error: dbError } = await withTimeout(
+      (supabase as any)
+        .from("trip_receipts")
+        .insert({
+          trip_expense_id: expenseId,
+          file_name: file.name,
+          file_type: file.type,
+          file_size: file.size,
+          storage_path: fileName,
+        }) as Promise<any>,
+      8000
+    );
+    if (dbError) throw dbError;
+    
+    return true;
+  } catch (error) {
+    console.error("Erro ao fazer upload:", error);
+    throw error;
+  }
+};
+
+export const fetchTripReceipts = async (expenseId: string) => {
+  try {
+    const { data, error } = await withTimeout(
+      (supabase as any)
+        .from("trip_receipts")
+        .select("*")
+        .eq("trip_expense_id", expenseId)
+        .order("created_at", { ascending: false }) as Promise<any>,
+      8000
+    );
+    if (error) throw error;
+    return (data || []) as TripReceipt[];
+  } catch (error) {
+    console.error("Erro ao buscar comprovantes:", error);
+    throw error;
+  }
+};
+
+export const getSignedUrl = async (storagePath: string) => {
+  try {
+    const { data, error } = await withTimeout(
+      (supabase as any).storage.from('receipts').createSignedUrl(storagePath, 60 * 10) as Promise<any>,
+      8000
+    );
+    if (error) throw error;
+    if (data?.signedUrl) return data.signedUrl;
+    throw new Error('URL não gerada');
+  } catch (error) {
+    console.error("Erro ao gerar URL:", error);
+    throw new Error('Não foi possível gerar link do comprovante');
+  }
+};
+
+export const closeTrip = async (tripId: string, userId: string) => {
+  try {
+    const { error } = await withTimeout(
+      (supabase as any).rpc("close_trip", {
+        trip_id: tripId,
+        closer_id: userId,
+      }) as Promise<any>,
+      8000
+    );
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Erro ao fechar viagem:", error);
+    throw error;
+  }
+};
+
+export const closeTripWithNote = async (tripId: string, userId: string, note?: string) => {
+  try {
+    const { error } = await withTimeout(
+      (supabase as any).rpc("close_trip", {
+        trip_id: tripId,
+        closer_id: userId,
+        note: note || null,
+      }) as Promise<any>,
+      8000
+    );
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Erro ao fechar viagem:", error);
+    throw error;
+  }
+};
+
+export const deleteTripDeep = async (tripId: string) => {
+  try {
+    const { data: expenses, error: expErr } = await withTimeout(
+      (supabase as any)
+        .from("trip_expenses")
+        .select("id")
+        .eq("trip_id", tripId) as Promise<any>,
+      8000
+    );
+    if (expErr) throw expErr;
+
+    const paths: string[] = [];
+    for (const exp of expenses || []) {
+      const { data: recs, error: recErr } = await withTimeout(
+        (supabase as any)
+          .from("trip_receipts")
+          .select("storage_path")
+          .eq("trip_expense_id", exp.id) as Promise<any>,
+        8000
+      );
+      if (recErr) throw recErr;
+      for (const r of recs || []) paths.push(r.storage_path);
+    }
+
+    if (paths.length > 0) {
+      const { error: rmErr } = await withTimeout(
+        (supabase as any).storage.from("receipts").remove(paths) as Promise<any>,
+        15000
+      );
+      if (rmErr) throw rmErr;
+    }
+
+    const { error: delExpErr } = await withTimeout(
+      (supabase as any).from("trip_expenses").delete().eq("trip_id", tripId) as Promise<any>,
+      8000
+    );
+    if (delExpErr) throw delExpErr;
+
+    const { error: delTripErr } = await withTimeout(
+      (supabase as any).from("trips").delete().eq("id", tripId) as Promise<any>,
+      8000
+    );
+    if (delTripErr) throw delTripErr;
+
+    return true;
+  } catch (error) {
+    console.error("Erro ao deletar viagem:", error);
+    throw error;
+  }
+};
+
+export const updateTrip = async (
+  tripId: string,
+  changes: Partial<{ close_note: string | null; budget_amount: number; cost_center_id: string | null }>
+) => {
+  try {
+    const { error } = await withTimeout(
+      (supabase as any).from("trips").update(changes).eq("id", tripId) as Promise<any>,
+      8000
+    );
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Erro ao atualizar viagem:", error);
+    throw error;
+  }
+};
