@@ -6,6 +6,7 @@ import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Table, TableHead, TableRow, TableCell, TableBody } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import NovoPedido from "./NovoPedido";
 import PedidoDetail from "./PedidoDetail";
 import { CheckCircle, XCircle, Clock, RefreshCw, LogOut, WifiOff } from 'lucide-react';
@@ -276,7 +277,9 @@ const PedidosTable: React.FC = () => {
       {/* Modal de novo pedido */}
       <Dialog open={showNovoModal} onOpenChange={open => setShowNovoModal(open)}>
         <DialogContent className="max-w-xl p-0">
-          <DialogTitle className="sr-only">Novo Pedido de Compra</DialogTitle>
+          <VisuallyHidden.Root>
+            <DialogTitle>Novo Pedido de Compra</DialogTitle>
+          </VisuallyHidden.Root>
           <DialogDescription className="sr-only">Formulário para criar um novo pedido de compra.</DialogDescription>
           <NovoPedido open={showNovoModal} onOpenChange={setShowNovoModal} onSuccess={() => handleNovoClose(true)} />
         </DialogContent>
@@ -284,7 +287,9 @@ const PedidosTable: React.FC = () => {
       {/* Modal de detalhes do pedido */}
       <Dialog open={!!selectedPedidoId} onOpenChange={open => { if (!open) setSelectedPedidoId(null); }}>
         <DialogContent className="max-w-3xl p-0">
-          <DialogTitle className="sr-only">Detalhes do Pedido de Compra</DialogTitle>
+          <VisuallyHidden.Root>
+            <DialogTitle>Detalhes do Pedido de Compra</DialogTitle>
+          </VisuallyHidden.Root>
           <DialogDescription className="sr-only">Visualização dos detalhes do pedido de compra selecionado.</DialogDescription>
           {selectedPedidoId && <PedidoDetail pedidoId={selectedPedidoId} onClose={() => handleDetailClose(true)} />}
         </DialogContent>
