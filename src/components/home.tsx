@@ -11,8 +11,6 @@ import {
   Loader2,
   LogOut,
   RefreshCw,
-  Wifi,
-  WifiOff
 } from "lucide-react";
 import ExpenseTable from "./ExpenseTable";
 import FilterBar from "./FilterBar";
@@ -227,6 +225,7 @@ const Home = () => {
             <Button
               onClick={handleRefresh}
               variant="outline"
+              disabled={isLoading}
               className="flex items-center gap-2"
             >
               <RefreshCw className="h-5 w-5" />

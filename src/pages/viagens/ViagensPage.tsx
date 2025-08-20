@@ -10,9 +10,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { PlusCircle, RefreshCw, CheckCircle, XCircle, FileText, Coins, WifiOff, Clock } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { useResilientQuery } from "@/hooks/useResilientQuery";
-import { useConnectionStatus } from "@/hooks/useConnectionStatus";
-import ConnectionStatus from "@/components/ConnectionStatus";
 import {
   Trip,
   TripExpense,
@@ -40,29 +37,28 @@ const ViagensPage: React.FC = () => {
   const [search, setSearch] = useState("");
   const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
   const [filterCostCenterId, setFilterCostCenterId] = useState<string>("");
-  const [refreshToken, setRefreshToken] = useState(0);
-  const { isConnected, isOnline } = useConnectionStatus();
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<Error | null>(null);
 
-  // Usar o hook resiliente para carregar viagens
-  const {
-    data: trips,
-    isLoading,
-    error: loadError,
-    refetch,
-    isStale,
-  } = useResilientQuery(
-    `trips-${user?.id}-${isAdmin}-${refreshToken}`,
-    () => {
-      if (!user) throw new Error('Usuário não autenticado');
-      return fetchTrips(user.id, isAdmin);
-    },
-    {
-      staleTime: 30000,
-      cacheTime: 300000,
-      refetchOnReconnect: true,
-      refetchOnWindowFocus: true,
+  const loadTrips = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const data = await fetchTrips(user.id, isAdmin);
+      setTrips(data || []);
+    } catch (error: any) {
+      setLoadError(error);
+      console.error("Erro ao carregar viagens:", error);
+    } finally {
+      setIsLoading(false);
     }
-  );
+  }, [user, isAdmin]);
+
+  useEffect(() => {
+    loadTrips();
+  }, [loadTrips]);
 
   useEffect(() => {
     (async () => {
@@ -102,40 +98,21 @@ const ViagensPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <ConnectionStatus />
       <div className="container mx-auto space-y-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">Conciliação de Viagens</h1>
-            {!isConnected && (
-              <div className="flex items-center gap-1 text-red-500">
-                <WifiOff className="h-4 w-4" />
-                <span className="text-sm">Offline</span>
-              </div>
-            )}
-            {isStale && isConnected && (
-              <div className="flex items-center gap-1 text-amber-500">
-                <Clock className="h-4 w-4" />
-                <span className="text-sm">Dados desatualizados</span>
-              </div>
-            )}
-          </div>
+          <h1 className="text-3xl font-bold">Conciliação de Viagens</h1>
           <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center w-full sm:w-auto max-w-xs sm:max-w-none">
             <Button onClick={() => window.location.assign('/')} variant="outline" className="w-full sm:w-auto">Home</Button>
             <Button 
-              onClick={async () => { 
-                setRefreshToken(t => t + 1); 
-                await refetch(); 
-              }} 
-              disabled={isLoading || !isConnected || !isOnline} 
-              variant={isStale ? "default" : "outline"} 
+              onClick={loadTrips} 
+              disabled={isLoading} 
+              variant="outline" 
               className="flex items-center gap-2 w-full sm:w-auto"
             >
               <RefreshCw className="h-5 w-5" /> Atualizar
             </Button>
             <Button 
               onClick={() => setShowNewTrip(true)} 
-              disabled={!isConnected || !isOnline}
               className="flex items-center gap-2 w-full sm:w-auto"
             >
               <PlusCircle className="h-5 w-5" /> Nova Viagem
@@ -205,6 +182,10 @@ const ViagensPage: React.FC = () => {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Tentar novamente
               </Button>
+              <Button onClick={loadTrips}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Tentar novamente
+              </Button>
             </div>
           )}
 
@@ -265,7 +246,7 @@ const ViagensPage: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Nova Viagem</DialogTitle>
           </DialogHeader>
-          <NewTripForm onCreated={() => { setShowNewTrip(false); refetch(); }} />
+          <NewTripForm onCreated={() => { setShowNewTrip(false); loadTrips(); }} />
         </DialogContent>
       </Dialog>
 
@@ -276,7 +257,7 @@ const ViagensPage: React.FC = () => {
           </DialogHeader>
           {showTripDetail && (
             <div className="max-h-[80svh] sm:max-h-[70vh] overflow-y-auto overscroll-contain pr-1">
-              <TripDetail trip={showTripDetail} onClose={() => setShowTripDetail(null)} onChanged={refetch} />
+              <TripDetail trip={showTripDetail} onClose={() => setShowTripDetail(null)} onChanged={loadTrips} />
             </div>
           )}
         </DialogContent>

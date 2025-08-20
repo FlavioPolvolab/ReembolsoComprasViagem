@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { withTimeout, retry, withReconnect } from "@/lib/utils";
+import { withTimeout, simpleRetry } from "@/lib/utils";
 
 export type Trip = {
   id: string;
@@ -42,18 +42,23 @@ export type TripReceipt = {
 };
 
 export const fetchTrips = async (userId?: string, isAdmin?: boolean) => {
-  return withReconnect(async () => {
+  try {
     let query = (supabase as any)
       .from("trips")
       .select("*, users:user_id(name), cost_center:cost_center_id(name)")
       .order("created_at", { ascending: false });
+    
     if (!isAdmin && userId) {
       query = query.eq("user_id", userId);
     }
-    const { data, error } = await query;
+    
+    const { data, error } = await withTimeout(query, 8000);
     if (error) throw error;
     return (data || []) as Trip[];
-  });
+  } catch (error) {
+    console.error("Erro ao buscar viagens:", error);
+    throw error;
+  }
 };
 
 export const createTrip = async (trip: {
@@ -65,35 +70,49 @@ export const createTrip = async (trip: {
   user_id: string;
   cost_center_id?: string | null;
 }) => {
-  return withReconnect(async () => {
-    const { data, error } = await (supabase as any)
-      .from("trips")
-      .insert(trip)
-      .select()
-      .single();
+  try {
+    const { data, error } = await withTimeout(
+      (supabase as any).from("trips").insert(trip).select().single(),
+      8000
+    );
     if (error) throw error;
     return data as Trip;
-  });
+  } catch (error) {
+    console.error("Erro ao criar viagem:", error);
+    throw error;
+  }
 };
 
 export const deleteTrip = async (tripId: string) => {
-  return withReconnect(async () => {
-    const { error } = await (supabase as any).from("trips").delete().eq("id", tripId);
+  try {
+    const { error } = await withTimeout(
+      (supabase as any).from("trips").delete().eq("id", tripId),
+      8000
+    );
     if (error) throw error;
     return true;
-  });
+  } catch (error) {
+    console.error("Erro ao deletar viagem:", error);
+    throw error;
+  }
 };
 
 export const fetchTripExpenses = async (tripId: string) => {
-  return withReconnect(async () => {
-    const { data, error } = await (supabase as any)
-      .from("trip_expenses")
-      .select("*")
-      .eq("trip_id", tripId)
-      .order("created_at", { ascending: true });
+  try {
+    const { data, error } = await withTimeout(
+      (supabase as any)
+        .from("trip_expenses")
+        .select("*")
+        .eq("trip_id", tripId)
+        .order("created_at", { ascending: true }),
+      8000
+    );
     if (error) throw error;
     return (data || []) as TripExpense[];
-  });
+  } catch (error) {
+    console.error("Erro ao buscar despesas da viagem:", error);
+    throw error;
+  }
 };
 
 export const addTripExpense = async (expense: {
@@ -103,262 +122,228 @@ export const addTripExpense = async (expense: {
   expense_date?: string | null;
   category?: string | null;
 }) => {
-  return withReconnect(async () => {
-    const { data, error } = await (supabase as any)
-      .from("trip_expenses")
-      .insert({ ...expense })
-      .select()
-      .single();
+  try {
+    const { data, error } = await withTimeout(
+      (supabase as any)
+        .from("trip_expenses")
+        .insert({ ...expense })
+        .select()
+        .single(),
+      8000
+    );
     if (error) throw error;
     return data as TripExpense;
-  });
+  } catch (error) {
+    console.error("Erro ao adicionar despesa:", error);
+    throw error;
+  }
 };
 
 export const updateTripExpense = async (
   expenseId: string,
   changes: Partial<Pick<TripExpense, "description" | "amount" | "expense_date" | "category" | "reconciled">>
 ) => {
-  return withReconnect(async () => {
-    const { error } = await (supabase as any)
-      .from("trip_expenses")
-      .update(changes)
-      .eq("id", expenseId);
+  try {
+    const { error } = await withTimeout(
+      (supabase as any)
+        .from("trip_expenses")
+        .update(changes)
+        .eq("id", expenseId),
+      8000
+    );
     if (error) throw error;
     return true;
-  });
+  } catch (error) {
+    console.error("Erro ao atualizar despesa:", error);
+    throw error;
+  }
 };
 
 export const deleteTripExpense = async (expenseId: string) => {
-  return withReconnect(async () => {
-    const { error } = await (supabase as any)
-      .from("trip_expenses")
-      .delete()
-      .eq("id", expenseId);
+  try {
+    const { error } = await withTimeout(
+      (supabase as any)
+        .from("trip_expenses")
+        .delete()
+        .eq("id", expenseId),
+      8000
+    );
     if (error) throw error;
     return true;
-  });
+  } catch (error) {
+    console.error("Erro ao deletar despesa:", error);
+    throw error;
+  }
 };
 
 export const uploadTripReceipt = async (tripId: string, expenseId: string, file: File) => {
-  // Sanitiza o nome do arquivo para evitar caracteres inválidos no Storage (ex.: "°", espaços, acentos)
-  const baseName = file.name
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
-    .replace(/[^a-zA-Z0-9._-]+/g, '_') // mantém apenas [a-zA-Z0-9._-]
-    .replace(/_+/g, '_')
-    .slice(0, 150);
-  const fileName = `trips/${tripId}/${expenseId}/${Date.now()}_${baseName}`;
-  const resUp: any = await withTimeout(
-    (supabase as any).storage
-      .from("receipts")
-      .upload(fileName, file),
-    20000
-  );
-  if (resUp?.error) throw resUp.error;
-  const resE: any = await withTimeout(
-    (supabase as any)
-      .from("trip_receipts")
-      .insert({
-        trip_expense_id: expenseId,
-        file_name: file.name,
-        file_type: file.type,
-        file_size: file.size,
-        storage_path: fileName,
-      }),
-    12000
-  );
-  if (resE?.error) throw resE.error;
-  return true;
+  try {
+    const baseName = file.name
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 150);
+    const fileName = `trips/${tripId}/${expenseId}/${Date.now()}_${baseName}`;
+    
+    const { error: uploadError } = await withTimeout(
+      (supabase as any).storage.from("receipts").upload(fileName, file),
+      15000
+    );
+    if (uploadError) throw uploadError;
+    
+    const { error: dbError } = await withTimeout(
+      (supabase as any)
+        .from("trip_receipts")
+        .insert({
+          trip_expense_id: expenseId,
+          file_name: file.name,
+          file_type: file.type,
+          file_size: file.size,
+          storage_path: fileName,
+        }),
+      8000
+    );
+    if (dbError) throw dbError;
+    
+    return true;
+  } catch (error) {
+    console.error("Erro ao fazer upload:", error);
+    throw error;
+  }
 };
 
 export const fetchTripReceipts = async (expenseId: string) => {
-  const resF: any = await withTimeout(
-    (supabase as any)
-      .from("trip_receipts")
-      .select("*")
-      .eq("trip_expense_id", expenseId)
-      .order("created_at", { ascending: false }),
-    12000
-  ) as any;
-  if (resF?.error) throw resF.error;
-  return (resF?.data || []) as TripReceipt[];
+  try {
+    const { data, error } = await withTimeout(
+      (supabase as any)
+        .from("trip_receipts")
+        .select("*")
+        .eq("trip_expense_id", expenseId)
+        .order("created_at", { ascending: false }),
+      8000
+    );
+    if (error) throw error;
+    return (data || []) as TripReceipt[];
+  } catch (error) {
+    console.error("Erro ao buscar comprovantes:", error);
+    throw error;
+  }
 };
 
 export const getSignedUrl = async (storagePath: string) => {
-  // 1) tentativa direta (batch API) - mais estável em alguns gateways
-  const direct: any = await withTimeout(
-    retry(async () => await (supabase as any).storage
-      .from('receipts')
-      .createSignedUrls([storagePath], 60 * 10), 2),
-    15000
-  );
-  if (direct?.data && Array.isArray(direct.data) && direct.data[0]?.signedUrl) {
-    return direct.data[0].signedUrl as string;
-  }
-  // 1b) fallback simples usando API de item único
   try {
-    const single: any = await withTimeout(
+    const { data, error } = await withTimeout(
       (supabase as any).storage.from('receipts').createSignedUrl(storagePath, 60 * 10),
-      12000
+      8000
     );
-    if (single?.data?.signedUrl) {
-      return single.data.signedUrl as string;
-    }
-  } catch {}
-  // 1c) fallback por download com token de sessão (gera blob URL)
-  try {
-    const dl: any = await withTimeout(
-      (supabase as any).storage.from('receipts').download(storagePath),
-      15000
-    );
-    if (dl?.data instanceof Blob) {
-      return URL.createObjectURL(dl.data);
-    }
-  } catch {}
-  // 2) fallback: localizar arquivo via list no diretório e assinar com nome exato
-  try {
-    const lastSlash = storagePath.lastIndexOf('/');
-    const dirRaw = lastSlash > 0 ? storagePath.substring(0, lastSlash) : '';
-    const dir = dirRaw.endsWith('/') ? dirRaw : (dirRaw ? dirRaw + '/' : '');
-    const base = lastSlash > 0 ? storagePath.substring(lastSlash + 1) : storagePath;
-    const listed: any = await withTimeout(
-      (supabase as any).storage.from('receipts').list(dir, { limit: 1000 }),
-      10000
-    );
-    const files = listed?.data as Array<{ name: string }> | undefined;
-    if (files && files.length > 0) {
-      const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, '_');
-      const match = files.find(f => f.name === base)
-        || files.find(f => normalize(f.name) === normalize(base))
-        || files[0];
-      const altPath = `${dir}${match.name}`;
-      const alt: any = await withTimeout(
-        (supabase as any).storage.from('receipts').createSignedUrls([altPath], 60 * 10),
-        10000
-      );
-      if (alt?.data && Array.isArray(alt.data) && alt.data[0]?.signedUrl) {
-        return alt.data[0].signedUrl as string;
-      }
-      // fallback adicional com createSignedUrl simples
-      const altSingle: any = await withTimeout(
-        (supabase as any).storage.from('receipts').createSignedUrl(altPath, 60 * 10),
-        10000
-      );
-      if (altSingle?.data?.signedUrl) {
-        return altSingle.data.signedUrl as string;
-      }
-      // fallback final: download com sessão
-      const dl2: any = await withTimeout(
-        (supabase as any).storage.from('receipts').download(altPath),
-        15000
-      );
-      if (dl2?.data instanceof Blob) {
-        return URL.createObjectURL(dl2.data);
-      }
-    }
-  } catch {}
-  // 3) se ainda falhar, propaga erro para UI tratar
-  throw new Error('Não foi possível gerar link do comprovante');
+    if (error) throw error;
+    if (data?.signedUrl) return data.signedUrl;
+    throw new Error('URL não gerada');
+  } catch (error) {
+    console.error("Erro ao gerar URL:", error);
+    throw new Error('Não foi possível gerar link do comprovante');
+  }
 };
 
 export const closeTrip = async (tripId: string, userId: string) => {
-  const resH: any = await withTimeout(
-    (supabase as any).rpc("close_trip", {
-      trip_id: tripId,
-      closer_id: userId,
-    }),
-    12000
-  );
-  if (resH?.error) throw resH.error;
-  return true;
+  try {
+    const { error } = await withTimeout(
+      (supabase as any).rpc("close_trip", {
+        trip_id: tripId,
+        closer_id: userId,
+      }),
+      8000
+    );
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Erro ao fechar viagem:", error);
+    throw error;
+  }
 };
 
 export const closeTripWithNote = async (tripId: string, userId: string, note?: string) => {
-  const resI: any = await withTimeout(
-    (supabase as any).rpc("close_trip", {
-      trip_id: tripId,
-      closer_id: userId,
-      note: note || null,
-    }),
-    12000
-  );
-  if (resI?.error) throw resI.error;
-  return true;
+  try {
+    const { error } = await withTimeout(
+      (supabase as any).rpc("close_trip", {
+        trip_id: tripId,
+        closer_id: userId,
+        note: note || null,
+      }),
+      8000
+    );
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Erro ao fechar viagem:", error);
+    throw error;
+  }
 };
 
 export const deleteTripDeep = async (tripId: string) => {
-  // Coletar todas as despesas e comprovantes para remover arquivos do storage
-  const resListExp: any = await withTimeout(
-    (supabase as any)
-      .from("trip_expenses")
-      .select("id")
-      .eq("trip_id", tripId),
-    12000
-  );
-  const { data: expenses, error: expErr } = resListExp || {};
-  if (expErr) throw expErr;
-
-  const paths: string[] = [];
-  for (const exp of expenses || []) {
-    const resListRec: any = await withTimeout(
+  try {
+    const { data: expenses, error: expErr } = await withTimeout(
       (supabase as any)
-        .from("trip_receipts")
-        .select("storage_path")
-        .eq("trip_expense_id", exp.id),
-      12000
+        .from("trip_expenses")
+        .select("id")
+        .eq("trip_id", tripId),
+      8000
     );
-    const { data: recs, error: recErr } = resListRec || {};
-    if (recErr) throw recErr;
-    for (const r of recs || []) paths.push(r.storage_path);
-  }
+    if (expErr) throw expErr;
 
-  if (paths.length > 0) {
-    const resRm: any = await withTimeout(
-      (supabase as any).storage
-        .from("receipts")
-        .remove(paths),
-      20000
+    const paths: string[] = [];
+    for (const exp of expenses || []) {
+      const { data: recs, error: recErr } = await withTimeout(
+        (supabase as any)
+          .from("trip_receipts")
+          .select("storage_path")
+          .eq("trip_expense_id", exp.id),
+        8000
+      );
+      if (recErr) throw recErr;
+      for (const r of recs || []) paths.push(r.storage_path);
+    }
+
+    if (paths.length > 0) {
+      const { error: rmErr } = await withTimeout(
+        (supabase as any).storage.from("receipts").remove(paths),
+        15000
+      );
+      if (rmErr) throw rmErr;
+    }
+
+    const { error: delExpErr } = await withTimeout(
+      (supabase as any).from("trip_expenses").delete().eq("trip_id", tripId),
+      8000
     );
-    const { error: rmErr } = resRm || {};
-    if (rmErr) throw rmErr;
+    if (delExpErr) throw delExpErr;
+
+    const { error: delTripErr } = await withTimeout(
+      (supabase as any).from("trips").delete().eq("id", tripId),
+      8000
+    );
+    if (delTripErr) throw delTripErr;
+
+    return true;
+  } catch (error) {
+    console.error("Erro ao deletar viagem:", error);
+    throw error;
   }
-
-  // Excluir dados (recibos serão removidos por cascade ao deletar despesas)
-  const resDelExp: any = await withTimeout(
-    (supabase as any)
-      .from("trip_expenses")
-      .delete()
-      .eq("trip_id", tripId),
-    12000
-  );
-  const { error: delExpErr } = resDelExp || {};
-  if (delExpErr) throw delExpErr;
-
-  const resDelTrip: any = await withTimeout(
-    (supabase as any)
-      .from("trips")
-      .delete()
-      .eq("id", tripId),
-    12000
-  );
-  const { error: delTripErr } = resDelTrip || {};
-  if (delTripErr) throw delTripErr;
-
-  return true;
 };
 
 export const updateTrip = async (
   tripId: string,
   changes: Partial<{ close_note: string | null; budget_amount: number; cost_center_id: string | null }>
 ) => {
-  const resJ: any = await withTimeout(
-    (supabase as any)
-      .from("trips")
-      .update(changes)
-      .eq("id", tripId),
-    12000
-  );
-  if (resJ?.error) throw resJ.error;
-  return true;
+  try {
+    const { error } = await withTimeout(
+      (supabase as any).from("trips").update(changes).eq("id", tripId),
+      8000
+    );
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Erro ao atualizar viagem:", error);
+    throw error;
+  }
 };
-
-

@@ -5,64 +5,21 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Helpers de estabilidade de rede melhorados
-export async function withTimeout<T>(promise: Promise<T>, ms = 15000): Promise<T> {
-  let timeout: NodeJS.Timeout
-  const timer = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error('Tempo de resposta excedido. Verifique sua conexão.')), ms)
-  })
+// Função simples para operações com timeout
+export async function withTimeout<T>(promise: Promise<T>, ms = 10000): Promise<T> {
+  const timeout = new Promise<never>((_, reject) => 
+    setTimeout(() => reject(new Error('Operação demorou muito para responder')), ms)
+  )
+  return Promise.race([promise, timeout])
+}
+
+// Função simples de retry sem complexidade
+export async function simpleRetry<T>(fn: () => Promise<T>, attempts = 2): Promise<T> {
   try {
-    return await Promise.race([promise, timer]) as T
-  } finally {
-    clearTimeout(timeout!)
+    return await fn()
+  } catch (error) {
+    if (attempts <= 1) throw error
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    return simpleRetry(fn, attempts - 1)
   }
-}
-
-export function retry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 1000): Promise<T> {
-  return fn().catch(err => {
-    if (attempts <= 0) {
-      console.error('Todas as tentativas de retry falharam:', err);
-      throw err;
-    }
-    console.log(`Tentativa falhou, tentando novamente em ${delayMs}ms. Tentativas restantes: ${attempts - 1}`);
-    return new Promise<T>((resolve) => setTimeout(resolve, delayMs)).then(() => retry(fn, attempts - 1, delayMs * 1.5))
-  })
-}
-
-// Função para executar operações com reconexão automática
-export async function withReconnect<T>(
-  operation: () => Promise<T>,
-  maxAttempts = 3,
-  baseDelay = 1000
-): Promise<T> {
-  let lastError: Error;
-  
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await withTimeout(operation(), 15000);
-    } catch (error: any) {
-      lastError = error;
-      
-      // Se é erro de rede ou timeout, tentar novamente
-      if (
-        error.message?.includes('fetch') ||
-        error.message?.includes('network') ||
-        error.message?.includes('timeout') ||
-        error.message?.includes('Tempo de resposta excedido') ||
-        error.code === 'PGRST301' // Supabase connection error
-      ) {
-        if (attempt < maxAttempts) {
-          const delay = baseDelay * Math.pow(2, attempt - 1);
-          console.log(`Tentativa ${attempt} falhou, tentando novamente em ${delay}ms`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-      }
-      
-      // Para outros tipos de erro, não tentar novamente
-      throw error;
-    }
-  }
-  
-  throw lastError!;
 }

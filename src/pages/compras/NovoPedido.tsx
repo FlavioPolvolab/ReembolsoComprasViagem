@@ -40,20 +40,19 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    console.log("handleSubmit chamado");
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
-      console.log("Verificando usuário e itens", { user, items });
       if (!user) throw new Error("Usuário não autenticado");
       if (items.length === 0) throw new Error("Adicione pelo menos um item ao pedido.");
+      
       // 1. Criar pedido
       const total = items.reduce((sum, item) => {
         const preco = Number(item.price);
         return sum + (isNaN(preco) ? 0 : preco * item.quantity);
       }, 0);
-      console.log("Enviando insert para purchase_orders", { title, description, total, userId: user.id });
+      
       const { data, error: insertError } = await (supabase as any)
         .from("purchase_orders")
         .insert({
@@ -64,11 +63,11 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         })
         .select()
         .single();
-      console.log("Resposta do insert purchase_orders", { data, insertError });
+        
       if (insertError) throw insertError;
+      
       // 2. Salvar itens
       for (const item of items) {
-        console.log("Inserindo item", item);
         const { error: itemError } = await (supabase as any)
           .from("purchase_order_items")
           .insert({
@@ -79,17 +78,19 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           });
         if (itemError) throw itemError;
       }
+      
       // 3. Upload dos arquivos
       if (files.length > 0 && data) {
         for (const file of files) {
           const fileExt = file.name.split(".").pop();
           const fileName = `${data.id}/${Date.now()}_${file.name}`;
           const filePath = `${fileName}`;
-          console.log("Fazendo upload do arquivo", file.name);
+          
           const { error: uploadError } = await (supabase as any).storage
             .from("receipts")
             .upload(filePath, file);
           if (uploadError) throw uploadError;
+          
           // Registrar no banco
           const { error: dbError } = await (supabase as any)
             .from("purchase_order_receipts")
@@ -103,6 +104,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           if (dbError) throw dbError;
         }
       }
+      
       if (onSuccess) onSuccess();
       onOpenChange(false);
     } catch (err: any) {
