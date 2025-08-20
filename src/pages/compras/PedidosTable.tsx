@@ -14,7 +14,6 @@ import { CheckCircle, XCircle, Clock, RefreshCw, LogOut, WifiOff } from 'lucide-
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import PurchaseOrderTable from "@/components/PurchaseOrderTable";
-import ConnectionIndicator from "@/components/ui/connection-indicator";
 
 const PedidosTable: React.FC = () => {
   const [activeTab, setActiveTab] = useState("pending");
@@ -32,13 +31,10 @@ const PedidosTable: React.FC = () => {
     if (!user) return;
     setIsLoading(true);
     setLoadError(null);
-    console.log('Iniciando carregamento de pedidos...');
     try {
       const data = await fetchPurchaseOrders(user.id, isAdmin);
-      console.log('Pedidos carregados com sucesso:', data?.length || 0);
       setPedidos(data || []);
     } catch (error: any) {
-      console.error('Erro ao carregar pedidos:', error);
       setLoadError(error);
     } finally {
       setIsLoading(false);
@@ -141,7 +137,6 @@ const PedidosTable: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center min-h-[80vh] p-4">
-      <ConnectionIndicator onRetry={loadPedidos} />
       <div className="w-full max-w-7xl">
         <div className="flex items-center gap-3 mb-6">
           <h1 className="text-3xl font-bold">Sistema de Pedidos de Compras</h1>
@@ -250,42 +245,13 @@ const PedidosTable: React.FC = () => {
             <div className="text-center">
               <h3 className="text-lg font-semibold">Erro ao carregar pedidos</h3>
               <p className="text-muted-foreground">
-                {loadError.message?.includes('Tempo de resposta excedido') 
-                  ? "Conexão lenta ou instável. Verifique sua internet e tente novamente."
-                  : loadError.message || "Não foi possível carregar os pedidos."
-                }
+                {loadError.message || "Não foi possível carregar os pedidos."}
               </p>
-              <div className="mt-4 p-4 bg-blue-50 rounded-lg text-sm text-blue-800">
-                <p className="font-semibold mb-2">Dicas para resolver:</p>
-                <ul className="text-left space-y-1">
-                  <li>• Verifique sua conexão com a internet</li>
-                  <li>• Tente recarregar a página (F5)</li>
-                  <li>• Aguarde alguns segundos e tente novamente</li>
-                  <li>• Se persistir, contate o suporte técnico</li>
-                </ul>
-              </div>
             </div>
-            <div className="flex gap-2">
-              <Button onClick={loadPedidos}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Tentar novamente
-              </Button>
-              <Button variant="outline" onClick={() => window.location.reload()}>
-                Recarregar página
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {isLoading && (
-          <div className="flex items-center justify-center p-12">
-            <div className="text-center space-y-4">
+            <Button onClick={loadPedidos}>
               <RefreshCw className="h-4 w-4 mr-2" />
-              <div>Carregando pedidos...</div>
-              <div className="text-sm text-muted-foreground">
-                Aguarde enquanto buscamos os dados...
-              </div>
-            </div>
+              Tentar novamente
+            </Button>
           </div>
         )}
 
@@ -337,4 +303,4 @@ const PedidosTable: React.FC = () => {
   );
 };
 
-export default PedidosTable;
+export default PedidosTable; 

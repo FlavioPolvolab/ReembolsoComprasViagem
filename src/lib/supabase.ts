@@ -25,14 +25,9 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       'x-client-info': 'reembolso-app',
     },
     fetch: (url, options = {}) => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
-      
       return fetch(url, {
         ...options,
-        signal: controller.signal,
-      }).finally(() => {
-        clearTimeout(timeoutId);
+        signal: AbortSignal.timeout(30000), // 30 segundos timeout
       });
     },
   },
