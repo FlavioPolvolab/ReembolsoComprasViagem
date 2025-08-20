@@ -14,6 +14,7 @@ import { CheckCircle, XCircle, Clock, RefreshCw, LogOut, WifiOff } from 'lucide-
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import PurchaseOrderTable from "@/components/PurchaseOrderTable";
+import ConnectionIndicator from "@/components/ui/connection-indicator";
 
 const PedidosTable: React.FC = () => {
   const [activeTab, setActiveTab] = useState("pending");
@@ -140,6 +141,7 @@ const PedidosTable: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center min-h-[80vh] p-4">
+      <ConnectionIndicator onRetry={loadPedidos} />
       <div className="w-full max-w-7xl">
         <div className="flex items-center gap-3 mb-6">
           <h1 className="text-3xl font-bold">Sistema de Pedidos de Compras</h1>
@@ -253,9 +255,15 @@ const PedidosTable: React.FC = () => {
                   : loadError.message || "Não foi possível carregar os pedidos."
                 }
               </p>
-              <p className="text-sm text-gray-500 mt-2">
-                Se o problema persistir, tente atualizar a página ou verificar sua conexão.
-              </p>
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg text-sm text-blue-800">
+                <p className="font-semibold mb-2">Dicas para resolver:</p>
+                <ul className="text-left space-y-1">
+                  <li>• Verifique sua conexão com a internet</li>
+                  <li>• Tente recarregar a página (F5)</li>
+                  <li>• Aguarde alguns segundos e tente novamente</li>
+                  <li>• Se persistir, contate o suporte técnico</li>
+                </ul>
+              </div>
             </div>
             <div className="flex gap-2">
               <Button onClick={loadPedidos}>
@@ -329,4 +337,4 @@ const PedidosTable: React.FC = () => {
   );
 };
 
-export default PedidosTable; 
+export default PedidosTable;
