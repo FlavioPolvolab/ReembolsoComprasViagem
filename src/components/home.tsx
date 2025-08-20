@@ -103,11 +103,21 @@ const Home = () => {
       }
       
       // Recarregar dados
-    await loadExpenses();
-    toast({
-      title: "Sucesso",
-      description: "Dados atualizados com sucesso!",
-    });
+      await loadExpenses();
+      toast({
+        title: "Sucesso",
+        description: "Dados atualizados com sucesso!",
+      });
+    } catch (error) {
+      console.error("Erro no refresh:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar dados",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   }, [loadExpenses, toast]);
 
   const handleViewDetails = (expense) => {
@@ -156,16 +166,6 @@ const Home = () => {
         title: "Sucesso",
         description: "Despesa excluída com sucesso!",
       });
-    } catch (error) {
-      console.error("Erro no refresh:", error);
-      toast({
-        title: "Erro",
-        description: "Erro ao atualizar dados",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
       loadExpenses();
     } catch (error) {
       toast({
@@ -251,8 +251,8 @@ const Home = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="container mx-auto space-y-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold">Sistema de Reembolso</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold">Sistema de Reembolso</h1>
           <div className="flex gap-2 items-center">
             <Button
               onClick={() => navigate('/')}
@@ -399,20 +399,20 @@ const Home = () => {
                 Carregando despesas...
               </span>
             </div>
-        ) : loadError ? (
-          <div className="flex flex-col items-center justify-center p-12 space-y-4">
-            <XCircle className="h-12 w-12 text-red-500" />
-            <div className="text-center">
-              <h3 className="text-lg font-semibold">Erro ao carregar dados</h3>
-              <p className="text-muted-foreground">
-                {loadError.message || "Não foi possível carregar as despesas."}
-              </p>
+          ) : loadError ? (
+            <div className="flex flex-col items-center justify-center p-12 space-y-4">
+              <XCircle className="h-12 w-12 text-red-500" />
+              <div className="text-center">
+                <h3 className="text-lg font-semibold">Erro ao carregar dados</h3>
+                <p className="text-muted-foreground">
+                  {loadError.message || "Não foi possível carregar as despesas."}
+                </p>
+              </div>
+              <Button onClick={handleRefresh}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Tentar novamente
+              </Button>
             </div>
-            <Button onClick={handleRefresh}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Tentar novamente
-            </Button>
-          </div>
           ) : (
             <>
               <TabsContent value="pending" className="mt-4">
