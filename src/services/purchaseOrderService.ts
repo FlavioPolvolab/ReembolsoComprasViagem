@@ -3,23 +3,19 @@ import { withTimeout, simpleRetry } from "@/lib/utils";
 
 export const fetchPurchaseOrders = async (userId?: string, isAdmin?: boolean) => {
   try {
-    let query = (supabase as any)
-      .from("purchase_orders")
-      .select("*, users:user_id(name)")
+    let query = supabase
+      .from("purchase_orders_view")
+      .select("*")
       .order("submitted_date", { ascending: false });
     
     if (!isAdmin && userId) {
       query = query.eq("user_id", userId);
     }
     
-    const { data, error } = await withTimeout(query, 15000);
+    const { data, error } = await query;
     if (error) throw error;
     
-    const pedidos = (data || []).map((p: any) => ({
-      ...p,
-      user_name: p.users?.name || "-"
-    }));
-    return pedidos;
+    return data || [];
   } catch (error) {
     console.error("Erro ao buscar pedidos:", error);
     throw error;

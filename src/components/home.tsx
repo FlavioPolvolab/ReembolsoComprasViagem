@@ -46,19 +46,32 @@ const Home = () => {
     setIsLoading(true);
     setLoadError(null);
     try {
+      // Recarregar perfil do usuário primeiro
+      if (user) {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (currentUser) {
+          const { data: profileData } = await supabase
+            .from("users")
+            .select("*")
+            .eq("id", currentUser.id)
+            .single();
+          console.log("Perfil recarregado:", profileData);
+        }
+      }
+      
       const data = await fetchExpenses(filters);
       const formattedData = (data || []).map((expense: any) => ({
         id: expense.id,
         user_id: expense.user_id,
-        name: expense.users?.name || "Desconhecido",
+        name: expense.user_name || "Desconhecido",
         description: expense.description,
         amount: expense.amount,
         status: expense.status,
         payment_status: expense.payment_status || "pending",
         date: expense.submitted_date,
         purpose: expense.purpose,
-        costCenter: expense.cost_centers?.name || "",
-        category: expense.categories?.name || "",
+        costCenter: expense.cost_center_name || "",
+        category: expense.category_name || "",
         paymentDate: expense.payment_date,
       }));
       setExpenses(formattedData);

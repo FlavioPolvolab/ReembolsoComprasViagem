@@ -43,18 +43,18 @@ export type TripReceipt = {
 
 export const fetchTrips = async (userId?: string, isAdmin?: boolean) => {
   try {
-    let query = (supabase as any)
-      .from("trips")
-      .select("*, users:user_id(name), cost_center:cost_center_id(name)")
+    let query = supabase
+      .from("trips_view")
+      .select("*")
       .order("created_at", { ascending: false });
     
     if (!isAdmin && userId) {
       query = query.eq("user_id", userId);
     }
     
-    const { data, error } = await withTimeout(query, 8000);
+    const { data, error } = await query;
     if (error) throw error;
-    return (data || []) as Trip[];
+    return data || [];
   } catch (error) {
     console.error("Erro ao buscar viagens:", error);
     throw error;

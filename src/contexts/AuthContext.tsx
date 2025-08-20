@@ -94,9 +94,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const fetchUserProfile = async (userId: string) => {
     setIsLoading(true);
     try {
-      // Wait a moment to ensure the trigger has time to create the user profile
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
       const { data, error } = await supabase
         .from("users")
         .select("*")
@@ -149,8 +146,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // Corrigir para aceitar tanto roles (array) quanto role (string)
         const roles = (data as any).roles || (data?.role ? [data.role] : []);
         setProfile(data);
-        setIsAdmin(Array.isArray(roles) ? roles.includes("admin") : roles === "admin");
-        setUserRoles(Array.isArray(roles) ? roles : (roles ? [roles] : []));
+        setIsAdmin(data?.role === "admin" || (Array.isArray(data?.roles) && data.roles.includes("admin")));
+        setUserRoles(data?.roles || (data?.role ? [data.role] : []));
       }
     } catch (error) {
       console.error("Erro ao buscar perfil do usuário:", error);

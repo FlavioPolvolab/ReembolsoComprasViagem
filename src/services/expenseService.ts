@@ -31,13 +31,7 @@ export interface Receipt {
 
 export const fetchExpenses = async (filters: any = {}) => {
   try {
-    let query = supabase.from("expenses").select(`
-      *,
-      users:user_id (name, email),
-      cost_centers:cost_center_id (name),
-      categories:category_id (name),
-      receipts (*)
-    `);
+    let query = supabase.from("expenses_view").select("*");
 
     if (filters.search) {
       query = query.or(
@@ -67,7 +61,7 @@ export const fetchExpenses = async (filters: any = {}) => {
 
     query = query.order("submitted_date", { ascending: false });
 
-    const { data, error } = await withTimeout(query, 8000);
+    const { data, error } = await query;
 
     if (error) {
       console.error("Erro ao buscar despesas:", error);
