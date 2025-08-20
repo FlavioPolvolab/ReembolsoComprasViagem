@@ -177,6 +177,22 @@ const Home = () => {
     }
   };
 
+  const handleMarkPaid = async (expense) => {
+    try {
+      await updatePaymentStatus(expense.id, true);
+      toast({
+        title: "Sucesso",
+        description: "Despesa marcada como paga!",
+      });
+      loadExpenses();
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível marcar como paga.",
+        variant: "destructive",
+      });
+    }
+  };
   // Memoize os dados filtrados para evitar recálculos desnecessários
   const filteredExpenses = useMemo(() => {
     let result = expenses;
@@ -428,6 +444,7 @@ const Home = () => {
                     await loadExpenses();
                   }}
                   onDelete={handleDelete}
+                  onMarkPaid={handleMarkPaid}
                 />
               </TabsContent>
               <TabsContent value="approved" className="mt-4">
@@ -436,12 +453,14 @@ const Home = () => {
                   onViewDetails={handleViewDetails}
                   showPaymentStatus={true}
                   isAdmin={isAdmin}
+                  hasRole={hasRole}
                   onBulkMarkPaid={async (selected) => {
                     await Promise.all(
                       selected.map(e => updatePaymentStatus(e.id, true))
                     );
                     await loadExpenses();
                   }}
+                  onMarkPaid={handleMarkPaid}
                 />
               </TabsContent>
               <TabsContent value="rejected" className="mt-4">
@@ -450,6 +469,8 @@ const Home = () => {
                   onViewDetails={handleViewDetails}
                   showPaymentStatus={false}
                   isAdmin={isAdmin}
+                  hasRole={hasRole}
+                  onMarkPaid={handleMarkPaid}
                 />
               </TabsContent>
               {isAdmin && activeTab === "register" && (

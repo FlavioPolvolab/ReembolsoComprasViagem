@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { MoreHorizontal, Eye, CheckCircle, XCircle } from "lucide-react";
+import { MoreHorizontal, Eye, CheckCircle, XCircle, DollarSign } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +52,7 @@ interface ExpenseTableProps {
   isAdmin?: boolean;
   hasRole?: (role: string) => boolean;
   onDelete?: (expense: Expense) => void;
+  onMarkPaid?: (expense: Expense) => void;
 }
 
 const ExpenseTable: React.FC<ExpenseTableProps> = ({
@@ -65,6 +66,7 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
   isAdmin = false,
   hasRole,
   onDelete,
+  onMarkPaid,
 }) => {
   const [selectedExpenses, setSelectedExpenses] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<{
@@ -281,20 +283,38 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
                 <TableCell>{expense.costCenter}</TableCell>
                 <TableCell>{expense.category}</TableCell>
                 <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Abrir menu</span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onViewDetails && onViewDetails(expense)}
+                      title="Ver detalhes"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    
+                    {expense.status === "approved" && expense.payment_status !== "paid" && (isAdmin || (hasRole && hasRole('approver'))) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onMarkPaid && onMarkPaid(expense)}
+                        className="text-green-600 border-green-600 hover:bg-green-50"
+                        title="Marcar como pago"
+                      >
+                        <DollarSign className="h-4 w-4 mr-1" />
+                        Pago
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onViewDetails(expense)}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        Ver detalhes
-                      </DropdownMenuItem>
-                      {expense.status === "pending" && (
-                        <>
+                    )}
+                    
+                    {expense.status === "pending" && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Mais ações</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
                           {hasRole && hasRole('approver') && (
                             <DropdownMenuItem onClick={() => onApprove(expense)}>
                               <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
@@ -311,10 +331,10 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
                               Excluir
                             </DropdownMenuItem>
                           )}
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
