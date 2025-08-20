@@ -40,6 +40,13 @@ const ViagensPage: React.FC = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<Error | null>(null);
+  const [tripExpenses, setTripExpenses] = useState<{ [tripId: string]: TripExpense[] }>({});
+
+  // Função para calcular o gasto total de uma viagem
+  const getTripSpentAmount = useCallback((tripId: string) => {
+    const expenses = tripExpenses[tripId] || [];
+    return expenses.reduce((sum, exp) => sum + Number(exp.amount || 0), 0);
+  }, [tripExpenses]);
 
   const loadTrips = useCallback(async () => {
     if (!user) return;
@@ -59,6 +66,19 @@ const ViagensPage: React.FC = () => {
       
       const data = await fetchTrips(user.id, isAdmin);
       setTrips((data || []) as any);
+
+      // Carregar despesas para todas as viagens
+      const expensesMap: { [tripId: string]: TripExpense[] } = {};
+      for (const trip of data || []) {
+        try {
+          const expenses = await fetchTripExpenses(trip.id);
+          expensesMap[trip.id] = expenses || [];
+        } catch (error) {
+          console.error(`Erro ao carregar despesas da viagem ${trip.id}:`, error);
+          expensesMap[trip.id] = [];
+        }
+      }
+      setTripExpenses(expensesMap);
     } catch (error: any) {
       setLoadError(error);
       console.error("Erro ao carregar viagens:", error);
@@ -98,13 +118,18 @@ const ViagensPage: React.FC = () => {
     if (filterCostCenterId) list = list.filter(t => t.cost_center_id === filterCostCenterId);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      list = list.filter(t => [t.title, t.description, t.users?.name, t.cost_center?.name].some(v => v && String(v).toLowerCase().includes(q)));
+      list = list.filter(t =>
+        [t.title, t.description, t.users?.name, t.cost_center?.name].some(v => v && String(v).toLowerCase().includes(q))
+      );
     }
     return list;
   }, [trips, search, filterCostCenterId]);
 
+  const totalSpentAll = useMemo(() => 
+    filteredForSummary.reduce((s, t) => s + getTripSpentAmount(t.id), 0), 
+    [filteredForSummary, getTripSpentAmount]
+  );
   const totalBudget = useMemo(() => filteredForSummary.reduce((s, t) => s + Number(t.budget_amount || 0), 0), [filteredForSummary]);
-  const totalSpentAll = useMemo(() => filteredForSummary.reduce((s, t) => s + Number(t.spent_amount || 0), 0), [filteredForSummary]);
   const totalBalance = useMemo(() => totalBudget - totalSpentAll, [totalBudget, totalSpentAll]);
 
   return (
@@ -213,8 +238,8 @@ const ViagensPage: React.FC = () => {
                     <div className="text-sm flex items-center gap-2">
                       <Coins className="h-4 w-4 text-amber-600" /> Orçamento: R$ {Number(trip.budget_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </div>
-                    <div className="text-sm">Gasto: R$ {Number(trip.spent_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
-                    <div className="text-sm font-semibold">Saldo: R$ {Number(trip.budget_amount - trip.spent_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
+                    <div className="text-sm">Gasto: R$ {getTripSpentAmount(trip.id).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
+                    <div className="text-sm font-semibold">Saldo: R$ {Number(trip.budget_amount - getTripSpentAmount(trip.id)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
                     <div className="flex gap-2 mt-2">
                       <Button variant="outline" size="sm" onClick={() => setShowTripDetail(trip)}>Ver detalhes</Button>
                     </div>
@@ -236,7 +261,7 @@ const ViagensPage: React.FC = () => {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div className="text-sm text-muted-foreground">Fechada em {trip.updated_at?.slice(0,10)}</div>
-                    <div className="text-sm">Gasto final: R$ {Number(trip.spent_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
+                    <div className="text-sm">Gasto final: R$ {getTripSpentAmount(trip.id).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
                     <div className="flex gap-2 mt-2">
                       <Button variant="outline" size="sm" onClick={() => setShowTripDetail(trip)}>Ver detalhes</Button>
                     </div>
@@ -664,9 +689,8 @@ const TripDetail: React.FC<{ trip: Trip; onClose: () => void; onChanged: () => v
                 variant="outline"
                 onClick={async () => {
                   try {
-                    // Persistir nota de fechamento (se digitada) e orçamento atual, se mudou
+                    // Persistir orçamento atual, se mudou
                     await updateTrip(trip.id, {
-                      close_note: (closeNote || "").trim() || null,
                       budget_amount: Number(currentBudget),
                     });
                   } catch {}

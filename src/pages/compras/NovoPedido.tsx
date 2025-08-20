@@ -60,8 +60,8 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       
       console.log("Criando pedido com total:", total);
       
-      const { data, error: insertError } = await supabase
-        .from("purchase_orders" as any)
+      const { data, error: insertError } = await (supabase as any)
+        .from("purchase_orders")
         .insert({
           title,
           description,
@@ -81,8 +81,8 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       // 2. Salvar itens
       for (const item of items) {
         console.log("Salvando item:", item);
-        const { error: itemError } = await supabase
-          .from("purchase_order_items" as any)
+        const { error: itemError } = await (supabase as any)
+          .from("purchase_order_items")
           .insert({
             purchase_order_id: data.id,
             name: item.name,
@@ -105,7 +105,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           const fileName = `${data.id}/${Date.now()}_${file.name}`;
           const filePath = `${fileName}`;
           
-          const { error: uploadError } = await supabase.storage
+          const { error: uploadError } = await (supabase as any).storage
             .from("receipts")
             .upload(filePath, file);
           if (uploadError) {
@@ -114,8 +114,8 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           }
           
           // Registrar no banco
-          const { error: dbError } = await supabase
-            .from("purchase_order_receipts" as any)
+          const { error: dbError } = await (supabase as any)
+            .from("purchase_order_receipts")
             .insert({
               purchase_order_id: data.id,
               file_name: file.name,

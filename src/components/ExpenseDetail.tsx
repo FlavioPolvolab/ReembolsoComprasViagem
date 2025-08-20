@@ -14,9 +14,10 @@ import { Check, X, FileText, Download, Loader2, CheckCircle, Clock } from "lucid
 import { useAuth } from "@/contexts/AuthContext";
 import {
   fetchExpenseById,
-  updateExpenseStatus,
   getReceiptUrl,
-  updatePaymentStatus,
+  approveExpense,
+  rejectExpense,
+  updateExpense,
   deleteExpense,
 } from "@/services/expenseService";
 import { useToast } from "@/components/ui/use-toast";
@@ -58,7 +59,7 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [receiptUrls, setReceiptUrls] = useState<Record<string, string>>({});
-  const { isAdmin, hasRole } = useAuth();
+  const { isAdmin, hasRole, user } = useAuth();
   const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
 
@@ -106,22 +107,19 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
   }, [isOpen, expenseId]);
 
   const handleApprove = async () => {
-    if (!expense) return;
-
+    if (!user) return;
     setIsSubmitting(true);
     try {
-      await updateExpenseStatus(expense.id, "approved");
+      await approveExpense(expense.id, user.id);
       toast({
         title: "Success",
-        description: "Expense approved successfully.",
+        description: "Expense approved successfully",
       });
-      onStatusChange();
       onClose();
-    } catch (error) {
-      console.error("Error approving expense:", error);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to approve expense.",
+        description: error.message || "Failed to approve expense",
         variant: "destructive",
       });
     } finally {
@@ -130,34 +128,23 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
   };
 
   const handleReject = async () => {
-    if (!expense) return;
-
-    if (showRejectForm) {
-      if (!rejectionReason.trim()) return;
-
-      setIsSubmitting(true);
-      try {
-        await updateExpenseStatus(expense.id, "rejected", rejectionReason);
-        toast({
-          title: "Success",
-          description: "Expense rejected successfully.",
-        });
-        setRejectionReason("");
-        setShowRejectForm(false);
-        onStatusChange();
-        onClose();
-      } catch (error) {
-        console.error("Error rejecting expense:", error);
-        toast({
-          title: "Error",
-          description: "Failed to reject expense.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsSubmitting(false);
-      }
-    } else {
-      setShowRejectForm(true);
+    if (!user || !rejectionReason.trim()) return;
+    setIsSubmitting(true);
+    try {
+      await rejectExpense(expense.id, user.id, rejectionReason.trim());
+      toast({
+        title: "Success",
+        description: "Expense rejected successfully",
+      });
+      onClose();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject expense",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -168,7 +155,7 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
 
   const handlePaymentStatusChange = async (isPaid: boolean) => {
     try {
-      await updatePaymentStatus(expenseId, isPaid);
+      await updateExpense(expenseId, { payment_status: isPaid ? "paid" : "pending" });
       toast({
         title: "Sucesso",
         description: isPaid ? "Despesa marcada como paga" : "Status de pagamento atualizado",

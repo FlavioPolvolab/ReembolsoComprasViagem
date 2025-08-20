@@ -17,7 +17,7 @@ import ExpenseTable from "./ExpenseTable";
 import FilterBar from "./FilterBar";
 import ExpenseForm from "@/components/ExpenseForm";
 import ExpenseDetail from "./ExpenseDetail";
-import { fetchExpenses, updateExpenseStatus, updatePaymentStatus, deleteExpense } from "@/services/expenseService";
+import { fetchExpenses, approveExpense, rejectExpense, updateExpense, deleteExpense } from "@/services/expenseService";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import UserRegisterTab from "@/components/admin/UserRegisterTab";
@@ -179,7 +179,7 @@ const Home = () => {
 
   const handleMarkPaid = async (expense) => {
     try {
-      await updatePaymentStatus(expense.id, true);
+      await updateExpense(expense.id, { payment_status: "paid" });
       toast({
         title: "Sucesso",
         description: "Despesa marcada como paga!",
@@ -440,7 +440,7 @@ const Home = () => {
                   isAdmin={isAdmin}
                   hasRole={hasRole}
                   onBulkAction={async (selected, action) => {
-                    await Promise.all(selected.map(e => updateExpenseStatus(e.id, action === "approve" ? "approved" : "rejected")));
+                    await Promise.all(selected.map(e => updateExpense(e.id, { status: action === "approve" ? "approved" : "rejected" })));
                     await loadExpenses();
                   }}
                   onDelete={handleDelete}
@@ -456,7 +456,7 @@ const Home = () => {
                   hasRole={hasRole}
                   onBulkMarkPaid={async (selected) => {
                     await Promise.all(
-                      selected.map(e => updatePaymentStatus(e.id, true))
+                      selected.map(e => updateExpense(e.id, { payment_status: "paid" }))
                     );
                     await loadExpenses();
                   }}

@@ -1,22 +1,18 @@
 import { supabase } from "@/lib/supabase";
-import { withTimeout, simpleRetry } from "@/lib/utils";
 
 export interface Expense {
   id?: string;
   user_id: string;
   name: string;
-  description: string;
+  description?: string;
   amount: number;
   purpose: string;
   cost_center_id: string;
   category_id: string;
   payment_date: string;
-  status: "pending" | "approved" | "rejected";
-  payment_status?: "pending" | "paid";
-  paid_at?: string;
-  rejection_reason?: string;
   submitted_date?: string;
-  updated_at?: string;
+  status?: string;
+  payment_status?: string;
 }
 
 export interface Receipt {
@@ -30,73 +26,69 @@ export interface Receipt {
 }
 
 export const fetchExpenses = async (filters: any = {}) => {
-  try {
-    let query = (supabase as any).from("expenses_view").select("*");
+  let query = (supabase as any).from("expenses").select(`
+    *,
+    users:user_id (name, email),
+    cost_centers:cost_center_id (name),
+    categories:category_id (name),
+    receipts (*)
+  `);
 
-    if (filters.search) {
-      query = query.or(
-        `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`,
-      );
-    }
+  // Aplicar filtros
+  if (filters.search) {
+    query = query.or(
+      `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`,
+    );
+  }
 
-    if (filters.status) {
-      query = query.eq("status", filters.status);
-    }
+  if (filters.status) {
+    query = query.eq("status", filters.status);
+  }
 
-    if (filters.category) {
-      query = query.eq("category_id", filters.category);
-    }
+  if (filters.category) {
+    query = query.eq("category_id", filters.category);
+  }
 
-    if (filters.costCenter) {
-      query = query.eq("cost_center_id", filters.costCenter);
-    }
+  if (filters.costCenter) {
+    query = query.eq("cost_center_id", filters.costCenter);
+  }
 
-    if (filters.dateRange?.from) {
-      query = query.gte("submitted_date", filters.dateRange.from.toISOString());
-    }
+  if (filters.dateRange?.from) {
+    query = query.gte("submitted_date", filters.dateRange.from.toISOString());
+  }
 
-    if (filters.dateRange?.to) {
-      query = query.lte("submitted_date", filters.dateRange.to.toISOString());
-    }
+  if (filters.dateRange?.to) {
+    query = query.lte("submitted_date", filters.dateRange.to.toISOString());
+  }
 
-    query = query.order("submitted_date", { ascending: false });
+  // Ordenar por data de envio, mais recentes primeiro
+  query = query.order("submitted_date", { ascending: false });
 
-    const { data, error } = await query;
+  const { data, error } = await query;
 
-    if (error) {
-      console.error("Erro ao buscar despesas:", error);
-      throw error;
-    }
-
-    return data;
-  } catch (error) {
+  if (error) {
     console.error("Erro ao buscar despesas:", error);
     throw error;
   }
+
+  return data;
 };
 
 export const fetchExpenseById = async (id: string) => {
   try {
-    const { data, error } = await withTimeout(
-      (supabase as any)
-        .from("expenses")
-        .select(`
-          *,
-          users:user_id (name, email),
-          cost_centers:cost_center_id (name),
-          categories:category_id (name),
-          receipts (*)
-        `)
-        .eq("id", id)
-        .single() as Promise<any>,
-      8000
-    );
+    const { data, error } = await (supabase as any)
+      .from("expenses")
+      .select(`
+        *,
+        users:user_id (name, email),
+        cost_centers:cost_center_id (name),
+        categories:category_id (name),
+        receipts (*)
+      `)
+      .eq("id", id)
+      .single();
 
-    if (error) {
-      console.error("Erro ao buscar despesa:", error);
-      throw error;
-    }
-
+    if (error) throw error;
     return data;
   } catch (error) {
     console.error("Erro ao buscar despesa:", error);
@@ -106,52 +98,43 @@ export const fetchExpenseById = async (id: string) => {
 
 export const createExpense = async (expense: Expense, files: File[]) => {
   try {
-    const { data: expenseData, error: expenseError } = await withTimeout(
-      (supabase as any).from("expenses").insert([expense]).select().single() as Promise<any>,
-      8000
-    );
+    const { data: expenseData, error: expenseError } = await (supabase as any)
+      .from("expenses")
+      .insert([expense])
+      .select()
+      .single();
 
-    if (expenseError) {
-      console.error("Erro ao criar despesa:", expenseError);
-      throw expenseError;
-    }
+    if (expenseError) throw expenseError;
 
-    if (files.length > 0 && expenseData) {
-      const receipts = await Promise.all(
-        files.map(async (file, i) => {
-          const fileExt = file.name.split(".").pop();
-          const fileName = `${expenseData.id}/${Date.now()}_${i}.${fileExt}`;
-          const filePath = `${fileName}`;
+    // Upload dos arquivos
+    if (files.length > 0) {
+      const receipts: any[] = [];
 
-          const { error: uploadError } = await withTimeout(
-            supabase.storage.from("receipts").upload(filePath, file),
-            15000
-          );
+      for (const file of files) {
+        const fileExt = file.name.split(".").pop();
+        const fileName = `${expenseData.id}/${Date.now()}.${fileExt}`;
+        const filePath = `${fileName}`;
 
-          if (uploadError) {
-            console.error("Erro ao fazer upload do arquivo:", uploadError);
-            throw uploadError;
-          }
+        const { error: uploadError } = await (supabase as any).storage
+          .from("receipts")
+          .upload(filePath, file);
 
-          return {
-            expense_id: expenseData.id,
-            file_name: file.name,
-            file_type: file.type,
-            file_size: file.size,
-            storage_path: filePath,
-          };
-        }),
-      );
+        if (uploadError) throw uploadError;
 
-      const { error: receiptsError } = await withTimeout(
-        (supabase as any).from("receipts").insert(receipts) as Promise<any>,
-        8000
-      );
-
-      if (receiptsError) {
-        console.error("Erro ao criar comprovantes:", receiptsError);
-        throw receiptsError;
+        receipts.push({
+          expense_id: expenseData.id,
+          file_name: file.name,
+          file_type: file.type,
+          file_size: file.size,
+          storage_path: filePath,
+        });
       }
+
+      const { error: receiptsError } = await (supabase as any)
+        .from("receipts")
+        .insert(receipts);
+
+      if (receiptsError) throw receiptsError;
     }
 
     return expenseData;
@@ -161,88 +144,85 @@ export const createExpense = async (expense: Expense, files: File[]) => {
   }
 };
 
-export const updateExpenseStatus = async (
-  id: string,
-  status: "approved" | "rejected",
-  rejectionReason?: string,
-) => {
-  try {
-    const updateData: any = { status, updated_at: new Date().toISOString() };
+export const updateExpense = async (id: string, updateData: any) => {
+  const { data, error } = await (supabase as any)
+    .from("expenses")
+    .update(updateData)
+    .eq("id", id)
+    .select();
 
-    if (status === "rejected" && rejectionReason) {
-      updateData.rejection_reason = rejectionReason;
-    }
+  if (error) {
+    console.error("Erro ao atualizar despesa:", error);
+    throw error;
+  }
 
-    const { data, error } = await withTimeout(
-      supabase.from("expenses").update(updateData).eq("id", id).select(),
-      8000
-    );
+  return data;
+};
 
-    if (error) {
-      console.error("Erro ao atualizar status da despesa:", error);
-      throw error;
-    }
+export const deleteExpense = async (id: string) => {
+  const { error } = await (supabase as any)
+    .from("expenses")
+    .delete()
+    .eq("id", id);
 
-    return data;
-  } catch (error) {
-    console.error("Erro ao atualizar status:", error);
+  if (error) {
+    console.error("Erro ao excluir despesa:", error);
     throw error;
   }
 };
 
-export const updatePaymentStatus = async (id: string, isPaid: boolean) => {
+export const approveExpense = async (id: string, approverId: string) => {
   try {
-    const updateData = {
-      payment_status: isPaid ? "paid" : "pending",
-      paid_at: isPaid ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString()
-    };
-
-    const { data, error } = await withTimeout(
-      supabase.from("expenses").update(updateData).eq("id", id).select(),
-      8000
-    );
+    const { error } = await (supabase as any).rpc("approve_expense", {
+      expense_id: id,
+      approver_id: approverId,
+    });
 
     if (error) throw error;
-    return data;
   } catch (error) {
-    console.error("Erro ao atualizar pagamento:", error);
+    console.error("Erro ao aprovar despesa:", error);
+    throw error;
+  }
+};
+
+export const rejectExpense = async (id: string, rejectorId: string, reason: string) => {
+  try {
+    const { error } = await (supabase as any).rpc("reject_expense", {
+      expense_id: id,
+      rejector_id: rejectorId,
+      rejection_reason: reason,
+    });
+
+    if (error) throw error;
+  } catch (error) {
+    console.error("Erro ao rejeitar despesa:", error);
     throw error;
   }
 };
 
 export const getReceiptUrl = async (path: string) => {
   try {
-    const { data, error } = await withTimeout(
-      supabase.storage.from("receipts").createSignedUrl(path, 600),
-      8000
-    );
+    const { data, error } = await (supabase as any).storage
+      .from("receipts")
+      .createSignedUrl(path, 600);
 
-    if (error) {
-      console.error("Erro ao obter URL do comprovante:", error);
-      throw error;
-    }
-
+    if (error) throw error;
     return data.signedUrl;
   } catch (error) {
-    console.error("Erro ao obter URL:", error);
+    console.error("Erro ao gerar URL do comprovante:", error);
     throw error;
   }
 };
 
 export const fetchCategories = async () => {
   try {
-    const { data, error } = await withTimeout(
-      supabase.from("categories").select("*").order("name"),
-      8000
-    );
+    const { data, error } = await (supabase as any)
+      .from("categories")
+      .select("*")
+      .order("name");
 
-    if (error) {
-      console.error("Erro ao buscar categorias:", error);
-      throw error;
-    }
-
-    return data || [];
+    if (error) throw error;
+    return data;
   } catch (error) {
     console.error("Erro ao buscar categorias:", error);
     throw error;
@@ -251,48 +231,45 @@ export const fetchCategories = async () => {
 
 export const fetchCostCenters = async () => {
   try {
-    const { data, error } = await withTimeout(
-      supabase.from("cost_centers").select("*").order("name"),
-      8000
-    );
+    const { data, error } = await (supabase as any)
+      .from("cost_centers")
+      .select("*")
+      .order("name");
 
-    if (error) {
-      console.error("Erro ao buscar centros de custo:", error);
-      throw error;
-    }
-
-    return data || [];
+    if (error) throw error;
+    return data;
   } catch (error) {
     console.error("Erro ao buscar centros de custo:", error);
     throw error;
   }
 };
 
-export const deleteExpense = async (id: string) => {
+export const deleteExpenseReceipts = async (id: string) => {
+  const { error: receiptsError } = await (supabase as any)
+    .from("receipts")
+    .delete()
+    .eq("expense_id", id);
+
+  if (receiptsError) {
+    console.error("Erro ao excluir comprovantes:", receiptsError);
+    throw receiptsError;
+  }
+};
+
+export const deleteExpenseDeep = async (id: string) => {
   try {
-    const { error: receiptsError } = await withTimeout(
-      supabase.from("receipts").delete().eq("expense_id", id),
-      8000
-    );
-      
-    if (receiptsError) {
-      console.error("Erro ao deletar comprovantes:", receiptsError);
-      throw receiptsError;
-    }
-    
-    const { error } = await withTimeout(
-      (supabase as any).from("expenses").delete().eq("id", id) as Promise<any>,
-      8000
-    );
-      
-    if (error) {
-      console.error("Erro ao deletar despesa:", error);
-      throw error;
-    }
-    
-    return true;
+    // Primeiro, excluir comprovantes
+    await deleteExpenseReceipts(id);
+
+    // Depois, excluir a despesa
+    const { error } = await (supabase as any)
+      .from("expenses")
+      .delete()
+      .eq("id", id);
+
+    if (error) throw error;
   } catch (error) {
-    console.error("Erro ao deletar despesa:", error);
+    console.error("Erro ao excluir despesa:", error);
     throw error;
   }
 };
