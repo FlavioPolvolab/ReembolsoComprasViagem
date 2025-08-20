@@ -87,6 +87,22 @@ const Home = () => {
   }, [loadExpenses]);
 
   const handleRefresh = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // Recarregar perfil do usuário
+      if (user) {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (currentUser) {
+          const { data: profileData } = await supabase
+            .from("users")
+            .select("*")
+            .eq("id", currentUser.id)
+            .single();
+          console.log("Perfil recarregado no refresh:", profileData);
+        }
+      }
+      
+      // Recarregar dados
     await loadExpenses();
     toast({
       title: "Sucesso",
@@ -140,6 +156,16 @@ const Home = () => {
         title: "Sucesso",
         description: "Despesa excluída com sucesso!",
       });
+    } catch (error) {
+      console.error("Erro no refresh:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar dados",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
       loadExpenses();
     } catch (error) {
       toast({

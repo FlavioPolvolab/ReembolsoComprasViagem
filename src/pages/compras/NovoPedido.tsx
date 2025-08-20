@@ -43,9 +43,14 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
     e.preventDefault();
     setLoading(true);
     setError("");
+    
+    console.log("Iniciando criação do pedido...");
+    
     try {
       if (!user) throw new Error("Usuário não autenticado");
       if (items.length === 0) throw new Error("Adicione pelo menos um item ao pedido.");
+      
+      console.log("Dados do pedido:", { title, description, items, user: user.id });
       
       // 1. Criar pedido
       const total = items.reduce((sum, item) => {
@@ -53,7 +58,9 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         return sum + (isNaN(preco) ? 0 : preco * item.quantity);
       }, 0);
       
-      const { data, error: insertError } = await (supabase as any)
+      console.log("Criando pedido com total:", total);
+      
+      const { data, error: insertError } = await supabase
         .from("purchase_orders")
         .insert({
           title,
@@ -64,11 +71,17 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         .select()
         .single();
         
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error("Erro ao inserir pedido:", insertError);
+        throw insertError;
+      }
+      
+      console.log("Pedido criado:", data);
       
       // 2. Salvar itens
       for (const item of items) {
-        const { error: itemError } = await (supabase as any)
+        console.log("Salvando item:", item);
+        const { error: itemError } = await supabase
           .from("purchase_order_items")
           .insert({
             purchase_order_id: data.id,
@@ -76,23 +89,32 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
             quantity: item.quantity,
             unit_price: parseFloat(item.price),
           });
-        if (itemError) throw itemError;
+        if (itemError) {
+          console.error("Erro ao inserir item:", itemError);
+          throw itemError;
+        }
       }
+      
+      console.log("Todos os itens salvos");
       
       // 3. Upload dos arquivos
       if (files.length > 0 && data) {
         for (const file of files) {
+          console.log("Fazendo upload do arquivo:", file.name);
           const fileExt = file.name.split(".").pop();
           const fileName = `${data.id}/${Date.now()}_${file.name}`;
           const filePath = `${fileName}`;
           
-          const { error: uploadError } = await (supabase as any).storage
+          const { error: uploadError } = await supabase.storage
             .from("receipts")
             .upload(filePath, file);
-          if (uploadError) throw uploadError;
+          if (uploadError) {
+            console.error("Erro no upload:", uploadError);
+            throw uploadError;
+          }
           
           // Registrar no banco
-          const { error: dbError } = await (supabase as any)
+          const { error: dbError } = await supabase
             .from("purchase_order_receipts")
             .insert({
               purchase_order_id: data.id,
@@ -101,15 +123,26 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
               file_size: file.size,
               storage_path: filePath,
             });
-          if (dbError) throw dbError;
+          if (dbError) {
+            console.error("Erro ao registrar comprovante:", dbError);
+            throw dbError;
+          }
         }
       }
+      
+      console.log("Pedido criado com sucesso!");
+      
+      // Limpar formulário
+      setTitle("");
+      setDescription("");
+      setItems([]);
+      setFiles([]);
       
       if (onSuccess) onSuccess();
       onOpenChange(false);
     } catch (err: any) {
+      console.error("Erro completo:", err);
       setError(err.message || "Erro ao criar pedido");
-      console.error("Erro ao criar pedido:", err);
     } finally {
       setLoading(false);
     }
