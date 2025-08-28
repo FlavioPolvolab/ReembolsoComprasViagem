@@ -39,14 +39,21 @@ export type TripReceipt = {
 };
 
 export const fetchTrips = async (userId: string, isAdmin: boolean = false) => {
-  const { data, error } = await (supabase as any)
+  let query = (supabase as any)
     .from("trips")
     .select(`
       *,
       users:user_id(name),
-      cost_center:trip_cost_center_id(name)
-    `)
-    .order("created_at", { ascending: false });
+      cost_center:cost_center_id(name)
+    `);
+
+  if (!isAdmin) {
+    query = query.eq("user_id", userId);
+  }
+
+  query = query.order("created_at", { ascending: false });
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return data;
