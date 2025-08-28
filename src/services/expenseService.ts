@@ -98,7 +98,6 @@ export const createExpense = async (expense: Expense, files: File[]) => {
       .insert([expense])
       .select()
       .single();
-      .single();
 
     if (expenseError) throw expenseError;
 
