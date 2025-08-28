@@ -92,10 +92,12 @@ export const fetchExpenseById = async (id: string) => {
 
 export const createExpense = async (expense: Expense, files: File[]) => {
   try {
+    // Criar despesa primeiro
     const { data: expenseData, error: expenseError } = await (supabase as any)
       .from("expenses")
       .insert([expense])
       .select()
+      .single();
       .single();
 
     if (expenseError) throw expenseError;
@@ -112,7 +114,6 @@ export const createExpense = async (expense: Expense, files: File[]) => {
         const { error: uploadError } = await (supabase as any).storage
           .from("receipts")
           .upload(filePath, file);
-
         if (uploadError) throw uploadError;
 
         receipts.push({
@@ -127,7 +128,6 @@ export const createExpense = async (expense: Expense, files: File[]) => {
       const { error: receiptsError } = await (supabase as any)
         .from("receipts")
         .insert(receipts);
-
       if (receiptsError) throw receiptsError;
     }
 

@@ -217,6 +217,8 @@ const Home = () => {
   // Memoize os dados filtrados para evitar recálculos desnecessários
   const filteredExpenses = useMemo(() => {
     let result = expenses;
+    // Usuários não-admin só veem suas próprias despesas
+    // Admins veem todas as despesas
     if (!isAdmin && user?.id) {
       result = result.filter(e => e.user_id === user.id);
     }
@@ -245,10 +247,11 @@ const Home = () => {
     return filteredExpenses;
   }, [filteredExpenses, activeTab]);
 
-  // Resumo SEMPRE com todos os dados
-  const pendingExpenses = expenses.filter((e) => e.status === "pending");
-  const approvedExpenses = expenses.filter((e) => e.status === "approved");
-  const rejectedExpenses = expenses.filter((e) => e.status === "rejected");
+  // Resumo baseado nas permissões do usuário
+  const userExpenses = isAdmin ? expenses : expenses.filter(e => e.user_id === user?.id);
+  const pendingExpenses = userExpenses.filter((e) => e.status === "pending");
+  const approvedExpenses = userExpenses.filter((e) => e.status === "approved");
+  const rejectedExpenses = userExpenses.filter((e) => e.status === "rejected");
   const paidExpenses = expenses.filter((e) => e.status === "approved" && e.payment_status === "paid");
   const unpaidExpenses = expenses.filter((e) => e.status === "approved" && e.payment_status !== "paid");
   const paidCount = paidExpenses.length;
@@ -256,13 +259,13 @@ const Home = () => {
   const approvedCount = approvedExpenses.length;
   const pendingCount = pendingExpenses.length;
   const rejectedCount = rejectedExpenses.length;
-  const totalCount = expenses.length;
+  const totalCount = userExpenses.length;
   const paidTotal = paidExpenses.reduce((acc, curr) => acc + curr.amount, 0);
   const unpaidTotal = unpaidExpenses.reduce((acc, curr) => acc + curr.amount, 0);
   const approvedTotal = approvedExpenses.reduce((acc, curr) => acc + curr.amount, 0);
   const pendingTotal = pendingExpenses.reduce((acc, curr) => acc + curr.amount, 0);
   const rejectedTotal = rejectedExpenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalAmount = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalAmount = userExpenses.reduce((acc, curr) => acc + curr.amount, 0);
 
   // Calcular totais em R$
   const formatCurrency = (value: number) => {
@@ -336,74 +339,82 @@ const Home = () => {
           </div>
         </div>
 
-        {isAdmin && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="bg-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total de Solicitações
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalCount}</div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {formatCurrency(totalAmount)}
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Pendentes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-amber-500" />
-                  <span className="text-2xl font-bold">{pendingCount}</span>
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {formatCurrency(pendingTotal)}
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Aprovados
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-2xl font-bold">{approvedCount}</span>
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {formatCurrency(approvedTotal)}
-                </div>
+        {/* Cards de resumo - visíveis para todos os usuários */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card className="bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                {isAdmin ? "Total de Solicitações" : "Minhas Solicitações"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalCount}</div>
+              <div className="text-sm text-muted-foreground mt-1">
+                {formatCurrency(totalAmount)}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Pendentes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-amber-500" />
+                <span className="text-2xl font-bold">{pendingCount}</span>
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                {formatCurrency(pendingTotal)}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Aprovados
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="text-2xl font-bold">{approvedCount}</span>
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                {formatCurrency(approvedTotal)}
+              </div>
+              {isAdmin && (
                 <div className="mt-2 text-xs">
                   <span className="text-green-600">Pagos: {paidCount} ({formatCurrency(paidTotal)})</span>
                   <br />
                   <span className="text-amber-600">Pendentes: {unpaidCount} ({formatCurrency(unpaidTotal)})</span>
                 </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Rejeitados
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-red-500" />
-                  <span className="text-2xl font-bold">{rejectedCount}</span>
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {formatCurrency(rejectedTotal)}
-                </div>
-              </CardContent>
-            </Card>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Rejeitados
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <XCircle className="h-4 w-4 text-red-500" />
+                <span className="text-2xl font-bold">{rejectedCount}</span>
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                {formatCurrency(rejectedTotal)}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Botão de cadastrar usuário apenas para admins */}
+        {isAdmin && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Espaço para futuras funcionalidades admin */}
           </div>
         )}
 

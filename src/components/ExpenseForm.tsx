@@ -164,6 +164,11 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
       return;
     }
 
+    // Prevenir múltiplas submissões
+    if (isSubmitting) {
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -186,7 +191,6 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
           description: "Por favor, insira um valor válido.",
           variant: "destructive",
         });
-        setIsSubmitting(false);
         return;
       }
 
@@ -202,7 +206,13 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
         status: "pending" as "pending",
       };
 
-      const result = await createExpense(expenseData, files);
+      // Usar timeout para evitar travamento
+      const result = await Promise.race([
+        createExpense(expenseData, files),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Tempo limite excedido. Tente novamente.')), 30000)
+        )
+      ]);
 
       toast({
         title: "Sucesso",
@@ -211,6 +221,7 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
 
       reset();
       setFiles([]);
+      setError(null);
 
       if (onSubmit) {
         onSubmit(result);
