@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +28,38 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
   const [itemName, setItemName] = useState("");
   const [itemQty, setItemQty] = useState(1);
   const [itemPrice, setItemPrice] = useState("");
+  const [connectionWarning, setConnectionWarning] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const checkConnection = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setConnectionWarning(true);
+        } else {
+          setConnectionWarning(false);
+        }
+      } catch (err) {
+        setConnectionWarning(true);
+      }
+    };
+
+    checkConnection();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkConnection();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [open]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -41,16 +73,21 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Prevenir múltiplas submissões
+
     if (loading) return;
-    
+
     setLoading(true);
     setError("");
-    
+    setConnectionWarning(false);
+
     console.log("Iniciando criação do pedido...");
-    
+
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Sessão expirada. Por favor, faça login novamente.");
+      }
+
       if (!user) throw new Error("Usuário não autenticado");
       if (items.length === 0) throw new Error("Adicione pelo menos um item ao pedido.");
       
@@ -63,9 +100,8 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       }, 0);
       
       console.log("Criando pedido com total:", total);
-      
-      // Usar timeout para evitar travamento
-      const createOrderPromise = (supabase as any)
+
+      const { data, error: insertError } = await (supabase as any)
         .from("purchase_orders")
         .insert({
           title,
@@ -75,13 +111,6 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         })
         .select()
         .single();
-      
-      const { data, error: insertError } = await Promise.race([
-        createOrderPromise,
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Tempo limite excedido ao criar pedido')), 15000)
-        )
-      ]) as any;
         
       if (insertError) {
         console.error("Erro ao inserir pedido:", insertError);
@@ -93,8 +122,8 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       // 2. Salvar itens
       for (const item of items) {
         console.log("Salvando item:", item);
-        
-        const insertItemPromise = (supabase as any)
+
+        const { error: itemError } = await (supabase as any)
           .from("purchase_order_items")
           .insert({
             purchase_order_id: data.id,
@@ -102,14 +131,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
             quantity: item.quantity,
             unit_price: parseFloat(item.price),
           });
-        
-        const { error: itemError } = await Promise.race([
-          insertItemPromise,
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Tempo limite excedido ao salvar item')), 10000)
-          )
-        ]) as any;
-        
+
         if (itemError) {
           console.error("Erro ao inserir item:", itemError);
           throw itemError;
@@ -122,28 +144,19 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       if (files.length > 0 && data) {
         for (const file of files) {
           console.log("Fazendo upload do arquivo:", file.name);
-          const fileExt = file.name.split(".").pop();
           const fileName = `${data.id}/${Date.now()}_${file.name}`;
           const filePath = `${fileName}`;
-          
-          const uploadPromise = (supabase as any).storage
+
+          const { error: uploadError } = await (supabase as any).storage
             .from("receipts")
             .upload(filePath, file);
-          
-          const { error: uploadError } = await Promise.race([
-            uploadPromise,
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Tempo limite excedido no upload')), 20000)
-            )
-          ]) as any;
-          
+
           if (uploadError) {
             console.error("Erro no upload:", uploadError);
             throw uploadError;
           }
-          
-          // Registrar no banco
-          const insertReceiptPromise = (supabase as any)
+
+          const { error: dbError } = await (supabase as any)
             .from("purchase_order_receipts")
             .insert({
               purchase_order_id: data.id,
@@ -152,14 +165,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
               file_size: file.size,
               storage_path: filePath,
             });
-          
-          const { error: dbError } = await Promise.race([
-            insertReceiptPromise,
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Tempo limite excedido ao registrar comprovante')), 10000)
-            )
-          ]) as any;
-          
+
           if (dbError) {
             console.error("Erro ao registrar comprovante:", dbError);
             throw dbError;
@@ -292,6 +298,11 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
               </ul>
             )}
           </div>
+          {connectionWarning && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 text-sm text-yellow-800">
+              Atenção: A conexão pode estar inativa. Recomendamos esperar alguns segundos antes de enviar o formulário.
+            </div>
+          )}
           {error && <div className="text-red-500 text-sm text-center">{error}</div>}
           <DialogFooter>
             <Button type="submit" className="w-full h-12 text-lg bg-primary text-white font-bold rounded-md hover:bg-primary/90 transition" disabled={loading}>
