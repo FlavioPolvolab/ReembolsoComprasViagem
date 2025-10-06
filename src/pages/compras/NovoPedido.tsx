@@ -83,13 +83,15 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
     console.log("Iniciando criação do pedido...");
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error("Sessão expirada. Por favor, faça login novamente.");
-      }
-
       if (!user) throw new Error("Usuário não autenticado");
       if (items.length === 0) throw new Error("Adicione pelo menos um item ao pedido.");
+
+      console.log("Verificando sessão...");
+      try {
+        await supabase.auth.refreshSession();
+      } catch (refreshError) {
+        console.warn("Erro ao renovar sessão, tentando continuar:", refreshError);
+      }
       
       console.log("Dados do pedido:", { title, description, items, user: user.id });
       
@@ -101,7 +103,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       
       console.log("Criando pedido com total:", total);
 
-      const { data, error: insertError } = await (supabase as any)
+      const insertPromise = (supabase as any)
         .from("purchase_orders")
         .insert({
           title,
@@ -111,7 +113,13 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         })
         .select()
         .single();
-        
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout: A operação está demorando muito. Verifique sua conexão.')), 30000)
+      );
+
+      const { data, error: insertError } = await Promise.race([insertPromise, timeoutPromise]) as any;
+
       if (insertError) {
         console.error("Erro ao inserir pedido:", insertError);
         throw insertError;
@@ -120,10 +128,9 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       console.log("Pedido criado:", data);
       
       // 2. Salvar itens
-      for (const item of items) {
+      const itemPromises = items.map(async (item) => {
         console.log("Salvando item:", item);
-
-        const { error: itemError } = await (supabase as any)
+        return (supabase as any)
           .from("purchase_order_items")
           .insert({
             purchase_order_id: data.id,
@@ -131,10 +138,21 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
             quantity: item.quantity,
             unit_price: parseFloat(item.price),
           });
+      });
 
-        if (itemError) {
-          console.error("Erro ao inserir item:", itemError);
-          throw itemError;
+      const itemsTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout ao salvar itens')), 30000)
+      );
+
+      const itemResults = await Promise.race([
+        Promise.all(itemPromises),
+        itemsTimeout
+      ]) as any[];
+
+      for (const result of itemResults) {
+        if (result.error) {
+          console.error("Erro ao inserir item:", result.error);
+          throw result.error;
         }
       }
       
@@ -142,7 +160,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       
       // 3. Upload dos arquivos
       if (files.length > 0 && data) {
-        for (const file of files) {
+        const uploadPromises = files.map(async (file) => {
           console.log("Fazendo upload do arquivo:", file.name);
           const fileName = `${data.id}/${Date.now()}_${file.name}`;
           const filePath = `${fileName}`;
@@ -170,7 +188,16 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
             console.error("Erro ao registrar comprovante:", dbError);
             throw dbError;
           }
-        }
+        });
+
+        const uploadTimeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout ao fazer upload dos arquivos')), 60000)
+        );
+
+        await Promise.race([
+          Promise.all(uploadPromises),
+          uploadTimeout
+        ]);
       }
       
       console.log("Pedido criado com sucesso!");
@@ -186,12 +213,19 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       onOpenChange(false);
     } catch (err: any) {
       console.error("Erro completo:", err);
-      const errorMessage = err.message || "Erro ao criar pedido";
+      let errorMessage = err.message || "Erro ao criar pedido";
+
+      if (errorMessage.includes('Timeout')) {
+        errorMessage = "A operação está demorando muito. Isso pode acontecer quando você sai da aba do navegador. Por favor, mantenha a aba ativa e tente novamente.";
+      } else if (errorMessage.includes('session')) {
+        errorMessage = "Sua sessão expirou. Por favor, recarregue a página e faça login novamente.";
+      } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+        errorMessage = "Problema de conexão. Verifique sua internet e tente novamente.";
+      }
+
       setError(errorMessage);
-      
-      // Mostrar toast de erro
+
       if (typeof window !== 'undefined') {
-        // Usar alert como fallback se toast não estiver disponível
         alert(`Erro: ${errorMessage}`);
       }
     } finally {
@@ -300,10 +334,19 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           </div>
           {connectionWarning && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 text-sm text-yellow-800">
-              Atenção: A conexão pode estar inativa. Recomendamos esperar alguns segundos antes de enviar o formulário.
+              <strong>⚠️ Atenção:</strong> A conexão pode estar inativa. Recomendamos esperar alguns segundos antes de enviar o formulário.
             </div>
           )}
-          {error && <div className="text-red-500 text-sm text-center">{error}</div>}
+          {loading && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800">
+              <strong>💡 Importante:</strong> Mantenha esta aba ativa até concluir o salvamento. Não mude de aba durante o processo.
+            </div>
+          )}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-800">
+              <strong>❌ Erro:</strong> {error}
+            </div>
+          )}
           <DialogFooter>
             <Button type="submit" className="w-full h-12 text-lg bg-primary text-white font-bold rounded-md hover:bg-primary/90 transition" disabled={loading}>
               {loading ? (

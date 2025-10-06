@@ -31,37 +31,53 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 
 if (typeof window !== 'undefined') {
   let reconnectTimeout: NodeJS.Timeout | null = null;
+  let refreshInterval: NodeJS.Timeout | null = null;
+
+  const refreshSessionIfNeeded = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const expiresAt = session.expires_at;
+        const now = Math.floor(Date.now() / 1000);
+        const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
+
+        if (timeUntilExpiry < 300) {
+          console.log('Renovando sessão preventivamente...');
+          await supabase.auth.refreshSession();
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao verificar/renovar sessão:', error);
+    }
+  };
+
+  refreshInterval = setInterval(refreshSessionIfNeeded, 60000);
 
   const handleVisibilityChange = async () => {
     if (document.visibilityState === 'visible') {
+      console.log('Aba ficou visível, verificando conexão...');
+
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
         reconnectTimeout = null;
       }
 
-      reconnectTimeout = setTimeout(async () => {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            await supabase.auth.refreshSession();
-          }
-        } catch (error) {
-          console.error('Erro ao reconectar:', error);
-        }
-      }, 100);
+      await refreshSessionIfNeeded();
+    } else {
+      console.log('Aba ficou oculta');
     }
   };
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
 
   window.addEventListener('focus', async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        await supabase.auth.refreshSession();
-      }
-    } catch (error) {
-      console.error('Erro ao renovar sessão:', error);
+    console.log('Janela recebeu foco');
+    await refreshSessionIfNeeded();
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
     }
   });
 }
