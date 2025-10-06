@@ -41,6 +41,10 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevenir múltiplas submissões
+    if (loading) return;
+    
     setLoading(true);
     setError("");
     
@@ -60,7 +64,8 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       
       console.log("Criando pedido com total:", total);
       
-      const { data, error: insertError } = await (supabase as any)
+      // Usar timeout para evitar travamento
+      const createOrderPromise = (supabase as any)
         .from("purchase_orders")
         .insert({
           title,
@@ -70,6 +75,13 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         })
         .select()
         .single();
+      
+      const { data, error: insertError } = await Promise.race([
+        createOrderPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Tempo limite excedido ao criar pedido')), 15000)
+        )
+      ]) as any;
         
       if (insertError) {
         console.error("Erro ao inserir pedido:", insertError);
@@ -81,7 +93,8 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       // 2. Salvar itens
       for (const item of items) {
         console.log("Salvando item:", item);
-        const { error: itemError } = await (supabase as any)
+        
+        const insertItemPromise = (supabase as any)
           .from("purchase_order_items")
           .insert({
             purchase_order_id: data.id,
@@ -89,6 +102,14 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
             quantity: item.quantity,
             unit_price: parseFloat(item.price),
           });
+        
+        const { error: itemError } = await Promise.race([
+          insertItemPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Tempo limite excedido ao salvar item')), 10000)
+          )
+        ]) as any;
+        
         if (itemError) {
           console.error("Erro ao inserir item:", itemError);
           throw itemError;
@@ -105,16 +126,24 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           const fileName = `${data.id}/${Date.now()}_${file.name}`;
           const filePath = `${fileName}`;
           
-          const { error: uploadError } = await (supabase as any).storage
+          const uploadPromise = (supabase as any).storage
             .from("receipts")
             .upload(filePath, file);
+          
+          const { error: uploadError } = await Promise.race([
+            uploadPromise,
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Tempo limite excedido no upload')), 20000)
+            )
+          ]) as any;
+          
           if (uploadError) {
             console.error("Erro no upload:", uploadError);
             throw uploadError;
           }
           
           // Registrar no banco
-          const { error: dbError } = await (supabase as any)
+          const insertReceiptPromise = (supabase as any)
             .from("purchase_order_receipts")
             .insert({
               purchase_order_id: data.id,
@@ -123,6 +152,14 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
               file_size: file.size,
               storage_path: filePath,
             });
+          
+          const { error: dbError } = await Promise.race([
+            insertReceiptPromise,
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Tempo limite excedido ao registrar comprovante')), 10000)
+            )
+          ]) as any;
+          
           if (dbError) {
             console.error("Erro ao registrar comprovante:", dbError);
             throw dbError;
@@ -137,12 +174,20 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       setDescription("");
       setItems([]);
       setFiles([]);
+      setError("");
       
       if (onSuccess) onSuccess();
       onOpenChange(false);
     } catch (err: any) {
       console.error("Erro completo:", err);
-      setError(err.message || "Erro ao criar pedido");
+      const errorMessage = err.message || "Erro ao criar pedido";
+      setError(errorMessage);
+      
+      // Mostrar toast de erro
+      if (typeof window !== 'undefined') {
+        // Usar alert como fallback se toast não estiver disponível
+        alert(`Erro: ${errorMessage}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -250,7 +295,14 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           {error && <div className="text-red-500 text-sm text-center">{error}</div>}
           <DialogFooter>
             <Button type="submit" className="w-full h-12 text-lg bg-primary text-white font-bold rounded-md hover:bg-primary/90 transition" disabled={loading}>
-              {loading ? "Salvando..." : "Salvar Pedido"}
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Salvando...
+                </div>
+              ) : (
+                "Salvar Pedido"
+              )}
             </Button>
             <Button type="button" variant="outline" className="w-full h-12 text-lg border-gray-300 font-bold rounded-md" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancelar
