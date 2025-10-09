@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,13 +31,13 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
   const [connectionWarning, setConnectionWarning] = useState(false);
   const [sessionRefreshing, setSessionRefreshing] = useState(false);
   const [isReady, setIsReady] = useState(true);
+  const isProcessingRef = useRef(false);
+  const lastVisibilityChangeRef = useRef<number>(0);
 
   useEffect(() => {
     if (!open) return;
 
     const checkConnection = async () => {
-      setSessionRefreshing(true);
-      setIsReady(false);
       try {
         await waitForSessionRefresh();
 
@@ -49,11 +49,6 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         }
       } catch (err) {
         setConnectionWarning(true);
-      } finally {
-        setTimeout(() => {
-          setSessionRefreshing(false);
-          setIsReady(true);
-        }, 500);
       }
     };
 
@@ -61,30 +56,44 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
+
     const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible') {
+      const now = Date.now();
+
+      if (document.visibilityState === 'visible' && !isProcessingRef.current) {
+        if (now - lastVisibilityChangeRef.current < 2000) {
+          return;
+        }
+
+        lastVisibilityChangeRef.current = now;
+        isProcessingRef.current = true;
+
         console.log('Janela recebeu foco, aguardando atualização da sessão...');
         setSessionRefreshing(true);
         setIsReady(false);
 
-        await waitForSessionRefresh();
+        try {
+          await waitForSessionRefresh();
+        } catch (err) {
+          console.error('Erro ao aguardar refresh:', err);
+        }
 
         setTimeout(() => {
           setSessionRefreshing(false);
           setIsReady(true);
+          isProcessingRef.current = false;
           console.log('Sessão atualizada, pronto para enviar');
         }, 500);
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
     };
-  }, []);
+  }, [open]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
