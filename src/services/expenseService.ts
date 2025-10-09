@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, withConnection } from "@/lib/supabase";
 
 export interface Expense {
   id?: string;
@@ -26,50 +26,50 @@ export interface Receipt {
 }
 
 export const fetchExpenses = async (filters: any = {}) => {
-  let query = (supabase as any).from("expenses_view").select("*");
+  return withConnection(async () => {
+    let query = (supabase as any).from("expenses_view").select("*");
 
-  // Aplicar filtros
-  if (filters.search) {
-    query = query.or(
-      `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`,
-    );
-  }
+    if (filters.search) {
+      query = query.or(
+        `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`,
+      );
+    }
 
-  if (filters.status) {
-    query = query.eq("status", filters.status);
-  }
+    if (filters.status) {
+      query = query.eq("status", filters.status);
+    }
 
-  if (filters.category) {
-    query = query.eq("category_name", filters.category);
-  }
+    if (filters.category) {
+      query = query.eq("category_name", filters.category);
+    }
 
-  if (filters.costCenter) {
-    query = query.eq("cost_center_name", filters.costCenter);
-  }
+    if (filters.costCenter) {
+      query = query.eq("cost_center_name", filters.costCenter);
+    }
 
-  if (filters.dateRange?.from) {
-    query = query.gte("submitted_date", filters.dateRange.from.toISOString());
-  }
+    if (filters.dateRange?.from) {
+      query = query.gte("submitted_date", filters.dateRange.from.toISOString());
+    }
 
-  if (filters.dateRange?.to) {
-    query = query.lte("submitted_date", filters.dateRange.to.toISOString());
-  }
+    if (filters.dateRange?.to) {
+      query = query.lte("submitted_date", filters.dateRange.to.toISOString());
+    }
 
-  // Ordenar por data de envio, mais recentes primeiro
-  query = query.order("submitted_date", { ascending: false });
+    query = query.order("submitted_date", { ascending: false });
 
-  const { data, error } = await query;
+    const { data, error } = await query;
 
-  if (error) {
-    console.error("Erro ao buscar despesas:", error);
-    throw error;
-  }
+    if (error) {
+      console.error("Erro ao buscar despesas:", error);
+      throw error;
+    }
 
-  return data;
+    return data;
+  });
 };
 
 export const fetchExpenseById = async (id: string) => {
-  try {
+  return withConnection(async () => {
     const { data, error } = await (supabase as any)
       .from("expenses")
       .select(`
@@ -84,15 +84,11 @@ export const fetchExpenseById = async (id: string) => {
 
     if (error) throw error;
     return data;
-  } catch (error) {
-    console.error("Erro ao buscar despesa:", error);
-    throw error;
-  }
+  });
 };
 
 export const createExpense = async (expense: Expense, files: File[]) => {
-  try {
-    // Criar despesa primeiro
+  return withConnection(async () => {
     const { data: expenseData, error: expenseError } = await (supabase as any)
       .from("expenses")
       .insert([expense])
@@ -101,7 +97,6 @@ export const createExpense = async (expense: Expense, files: File[]) => {
 
     if (expenseError) throw expenseError;
 
-    // Upload dos arquivos
     if (files.length > 0) {
       const receipts: any[] = [];
 
@@ -131,55 +126,53 @@ export const createExpense = async (expense: Expense, files: File[]) => {
     }
 
     return expenseData;
-  } catch (error) {
-    console.error("Erro ao criar despesa:", error);
-    throw error;
-  }
+  });
 };
 
 export const updateExpense = async (id: string, updateData: any) => {
-  const { data, error } = await (supabase as any)
-    .from("expenses")
-    .update(updateData)
-    .eq("id", id)
-    .select();
+  return withConnection(async () => {
+    const { data, error } = await (supabase as any)
+      .from("expenses")
+      .update(updateData)
+      .eq("id", id)
+      .select();
 
-  if (error) {
-    console.error("Erro ao atualizar despesa:", error);
-    throw error;
-  }
+    if (error) {
+      console.error("Erro ao atualizar despesa:", error);
+      throw error;
+    }
 
-  return data;
+    return data;
+  });
 };
 
 export const deleteExpense = async (id: string) => {
-  const { error } = await (supabase as any)
-    .from("expenses")
-    .delete()
-    .eq("id", id);
+  return withConnection(async () => {
+    const { error } = await (supabase as any)
+      .from("expenses")
+      .delete()
+      .eq("id", id);
 
-  if (error) {
-    console.error("Erro ao excluir despesa:", error);
-    throw error;
-  }
+    if (error) {
+      console.error("Erro ao excluir despesa:", error);
+      throw error;
+    }
+  });
 };
 
 export const approveExpense = async (id: string, approverId: string) => {
-  try {
+  return withConnection(async () => {
     const { error } = await (supabase as any).rpc("approve_expense", {
       expense_id: id,
       approver_id: approverId,
     });
 
     if (error) throw error;
-  } catch (error) {
-    console.error("Erro ao aprovar despesa:", error);
-    throw error;
-  }
+  });
 };
 
 export const rejectExpense = async (id: string, rejectorId: string, reason: string) => {
-  try {
+  return withConnection(async () => {
     const { error } = await (supabase as any).rpc("reject_expense", {
       expense_id: id,
       rejector_id: rejectorId,
@@ -187,28 +180,22 @@ export const rejectExpense = async (id: string, rejectorId: string, reason: stri
     });
 
     if (error) throw error;
-  } catch (error) {
-    console.error("Erro ao rejeitar despesa:", error);
-    throw error;
-  }
+  });
 };
 
 export const getReceiptUrl = async (path: string) => {
-  try {
+  return withConnection(async () => {
     const { data, error } = await (supabase as any).storage
       .from("receipts")
       .createSignedUrl(path, 600);
 
     if (error) throw error;
     return data.signedUrl;
-  } catch (error) {
-    console.error("Erro ao gerar URL do comprovante:", error);
-    throw error;
-  }
+  });
 };
 
 export const fetchCategories = async () => {
-  try {
+  return withConnection(async () => {
     const { data, error } = await (supabase as any)
       .from("categories")
       .select("*")
@@ -216,14 +203,11 @@ export const fetchCategories = async () => {
 
     if (error) throw error;
     return data;
-  } catch (error) {
-    console.error("Erro ao buscar categorias:", error);
-    throw error;
-  }
+  });
 };
 
 export const fetchCostCenters = async () => {
-  try {
+  return withConnection(async () => {
     const { data, error } = await (supabase as any)
       .from("cost_centers")
       .select("*")
@@ -231,98 +215,89 @@ export const fetchCostCenters = async () => {
 
     if (error) throw error;
     return data;
-  } catch (error) {
-    console.error("Erro ao buscar centros de custo:", error);
-    throw error;
-  }
+  });
 };
 
 export const deleteExpenseReceipts = async (id: string) => {
-  const { error: receiptsError } = await (supabase as any)
-    .from("receipts")
-    .delete()
-    .eq("expense_id", id);
+  return withConnection(async () => {
+    const { error: receiptsError } = await (supabase as any)
+      .from("receipts")
+      .delete()
+      .eq("expense_id", id);
 
-  if (receiptsError) {
-    console.error("Erro ao excluir comprovantes:", receiptsError);
-    throw receiptsError;
-  }
+    if (receiptsError) {
+      console.error("Erro ao excluir comprovantes:", receiptsError);
+      throw receiptsError;
+    }
+  });
 };
 
 export const deleteExpenseDeep = async (id: string) => {
-  try {
-    // Primeiro, excluir comprovantes
+  return withConnection(async () => {
     await deleteExpenseReceipts(id);
 
-    // Depois, excluir a despesa
     const { error } = await (supabase as any)
       .from("expenses")
       .delete()
       .eq("id", id);
 
     if (error) throw error;
-  } catch (error) {
-    console.error("Erro ao excluir despesa:", error);
-    throw error;
-  }
+  });
 };
 
 export const fetchExpensesTest = async (filters: any = {}) => {
-  let query = (supabase as any).from("expenses").select(`
-    *,
-    users:user_id (name, email),
-    cost_centers:cost_center_id (name),
-    categories:category_id (name),
-    receipts (*)
-  `);
+  return withConnection(async () => {
+    let query = (supabase as any).from("expenses").select(`
+      *,
+      users:user_id (name, email),
+      cost_centers:cost_center_id (name),
+      categories:category_id (name),
+      receipts (*)
+    `);
 
-  // Aplicar filtros
-  if (filters.search) {
-    query = query.or(
-      `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`,
-    );
-  }
+    if (filters.search) {
+      query = query.or(
+        `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`,
+      );
+    }
 
-  if (filters.status) {
-    query = query.eq("status", filters.status);
-  }
+    if (filters.status) {
+      query = query.eq("status", filters.status);
+    }
 
-  if (filters.category) {
-    query = query.eq("category_id", filters.category);
-  }
+    if (filters.category) {
+      query = query.eq("category_id", filters.category);
+    }
 
-  if (filters.costCenter) {
-    query = query.eq("cost_center_id", filters.costCenter);
-  }
+    if (filters.costCenter) {
+      query = query.eq("cost_center_id", filters.costCenter);
+    }
 
-  if (filters.dateRange?.from) {
-    query = query.gte("submitted_date", filters.dateRange.from.toISOString());
-  }
+    if (filters.dateRange?.from) {
+      query = query.gte("submitted_date", filters.dateRange.from.toISOString());
+    }
 
-  if (filters.dateRange?.to) {
-    query = query.lte("submitted_date", filters.dateRange.to.toISOString());
-  }
+    if (filters.dateRange?.to) {
+      query = query.lte("submitted_date", filters.dateRange.to.toISOString());
+    }
 
-  // Ordenar por data de envio, mais recentes primeiro
-  query = query.order("submitted_date", { ascending: false });
+    query = query.order("submitted_date", { ascending: false });
 
-  const { data, error } = await query;
+    const { data, error } = await query;
 
-  if (error) {
-    console.error("Erro ao buscar despesas (teste):", error);
-    throw error;
-  }
+    if (error) {
+      console.error("Erro ao buscar despesas (teste):", error);
+      throw error;
+    }
 
-  return data;
+    return data;
+  });
 };
 
 export const testExpensesView = async () => {
-  try {
+  return withConnection(async () => {
     const { data, error } = await (supabase as any).rpc('test_expenses_view');
     if (error) throw error;
     return data;
-  } catch (error) {
-    console.error("Erro ao testar view:", error);
-    throw error;
-  }
+  });
 };

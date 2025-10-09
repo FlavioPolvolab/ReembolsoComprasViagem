@@ -29,116 +29,52 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-let sessionRefreshInProgress = false;
-let sessionRefreshPromise: Promise<void> | null = null;
+type SupabaseOperation<T> = () => Promise<T>;
 
-export const isSessionRefreshing = () => sessionRefreshInProgress;
+export async function withConnection<T>(
+  operation: SupabaseOperation<T>,
+  maxRetries: number = 2
+): Promise<T> {
+  let lastError: any = null;
 
-export const waitForSessionRefresh = async () => {
-  if (sessionRefreshPromise) {
-    await sessionRefreshPromise;
-  }
-};
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-export const ensureValidSession = async () => {
-  await waitForSessionRefresh();
-
-  try {
-    const { data: { session }, error } = await supabase.auth.getSession();
-
-    if (error) {
-      throw new Error(`Erro ao obter sessão: ${error.message}`);
-    }
-
-    if (!session) {
-      throw new Error('Sessão não encontrada. Por favor, faça login novamente.');
-    }
-
-    const expiresAt = session.expires_at;
-    const now = Math.floor(Date.now() / 1000);
-    const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
-
-    if (timeUntilExpiry < 60) {
-      console.log('Sessão expirando em breve, renovando...');
-      const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
-
-      if (refreshError || !newSession) {
-        throw new Error('Não foi possível renovar a sessão. Por favor, faça login novamente.');
+      if (sessionError) {
+        throw new Error(`Erro ao verificar sessão: ${sessionError.message}`);
       }
 
-      return newSession;
-    }
+      if (!session) {
+        throw new Error('Sessão não encontrada. Por favor, faça login novamente.');
+      }
 
-    return session;
-  } catch (error) {
-    console.error('Erro ao validar sessão:', error);
-    throw error;
-  }
-};
+      const expiresAt = session.expires_at;
+      const now = Math.floor(Date.now() / 1000);
+      const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
 
-if (typeof window !== 'undefined') {
-  let reconnectTimeout: NodeJS.Timeout | null = null;
-  let refreshInterval: NodeJS.Timeout | null = null;
-
-  const refreshSessionIfNeeded = async () => {
-    if (sessionRefreshInProgress) {
-      return;
-    }
-
-    sessionRefreshInProgress = true;
-
-    sessionRefreshPromise = (async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          const expiresAt = session.expires_at;
-          const now = Math.floor(Date.now() / 1000);
-          const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
-
-          if (timeUntilExpiry < 300) {
-            console.log('Renovando sessão preventivamente...');
-            await supabase.auth.refreshSession();
-            console.log('Sessão renovada com sucesso');
-          }
+      if (timeUntilExpiry < 60) {
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          throw new Error('Não foi possível renovar a sessão. Por favor, faça login novamente.');
         }
-      } catch (error) {
-        console.error('Erro ao verificar/renovar sessão:', error);
-      } finally {
-        sessionRefreshInProgress = false;
-        sessionRefreshPromise = null;
-      }
-    })();
-
-    await sessionRefreshPromise;
-  };
-
-  refreshInterval = setInterval(refreshSessionIfNeeded, 60000);
-
-  const handleVisibilityChange = async () => {
-    if (document.visibilityState === 'visible') {
-      console.log('Aba ficou visível, verificando conexão...');
-
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = null;
       }
 
-      await refreshSessionIfNeeded();
-    } else {
-      console.log('Aba ficou oculta');
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+
+      const isNetworkError = error?.message?.includes('Failed to fetch') ||
+                             error?.message?.includes('Network') ||
+                             error?.code === 'PGRST301';
+
+      if (!isNetworkError || attempt === maxRetries) {
+        break;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
     }
-  };
+  }
 
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-
-  window.addEventListener('focus', async () => {
-    console.log('Janela recebeu foco');
-    await refreshSessionIfNeeded();
-  });
-
-  window.addEventListener('beforeunload', () => {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-    }
-  });
+  throw lastError;
 }
