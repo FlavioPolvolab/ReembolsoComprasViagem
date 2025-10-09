@@ -9,7 +9,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase, waitForSessionRefresh, ensureValidSession, isSessionRefreshing } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 interface NovoPedidoProps {
   open: boolean;
@@ -39,8 +39,6 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
     const checkConnection = async () => {
       try {
-        await waitForSessionRefresh();
-
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           setConnectionWarning(true);
@@ -62,7 +60,8 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       const now = Date.now();
 
       if (document.visibilityState === 'visible' && !isProcessingRef.current) {
-        if (now - lastVisibilityChangeRef.current < 2000) {
+        if (now - lastVisibilityChangeRef.current < 3000) {
+          console.log('Ignorando mudança de visibilidade (muito recente)');
           return;
         }
 
@@ -73,18 +72,19 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         setSessionRefreshing(true);
         setIsReady(false);
 
-        try {
-          await waitForSessionRefresh();
-        } catch (err) {
-          console.error('Erro ao aguardar refresh:', err);
-        }
+        setTimeout(async () => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            console.log('Sessão verificada:', session ? 'válida' : 'inválida');
+          } catch (err) {
+            console.error('Erro ao verificar sessão:', err);
+          }
 
-        setTimeout(() => {
           setSessionRefreshing(false);
           setIsReady(true);
           isProcessingRef.current = false;
           console.log('Sessão atualizada, pronto para enviar');
-        }, 500);
+        }, 1500);
       }
     };
 
@@ -122,11 +122,13 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
       console.log("Dados do pedido:", { title, description, items, user: user.id });
 
-      console.log("Aguardando refresh da sessão se necessário...");
-      await waitForSessionRefresh();
-
       console.log("Validando sessão...");
-      const session = await ensureValidSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        throw new Error("Sessão inválida. Por favor, recarregue a página e faça login novamente.");
+      }
+
       console.log("Sessão validada:", { userId: session.user.id });
 
       const total = items.reduce((sum, item) => {
