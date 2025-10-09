@@ -77,17 +77,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     });
 
-    // Listener para restaurar estado ao voltar para a aba
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        setIsLoading(false);
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-
     return () => {
       subscription.unsubscribe();
-      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 

@@ -29,26 +29,87 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+let sessionRefreshInProgress = false;
+let sessionRefreshPromise: Promise<void> | null = null;
+
+export const isSessionRefreshing = () => sessionRefreshInProgress;
+
+export const waitForSessionRefresh = async () => {
+  if (sessionRefreshPromise) {
+    await sessionRefreshPromise;
+  }
+};
+
+export const ensureValidSession = async () => {
+  await waitForSessionRefresh();
+
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+
+    if (error) {
+      throw new Error(`Erro ao obter sessão: ${error.message}`);
+    }
+
+    if (!session) {
+      throw new Error('Sessão não encontrada. Por favor, faça login novamente.');
+    }
+
+    const expiresAt = session.expires_at;
+    const now = Math.floor(Date.now() / 1000);
+    const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
+
+    if (timeUntilExpiry < 60) {
+      console.log('Sessão expirando em breve, renovando...');
+      const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError || !newSession) {
+        throw new Error('Não foi possível renovar a sessão. Por favor, faça login novamente.');
+      }
+
+      return newSession;
+    }
+
+    return session;
+  } catch (error) {
+    console.error('Erro ao validar sessão:', error);
+    throw error;
+  }
+};
+
 if (typeof window !== 'undefined') {
   let reconnectTimeout: NodeJS.Timeout | null = null;
   let refreshInterval: NodeJS.Timeout | null = null;
 
   const refreshSessionIfNeeded = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const expiresAt = session.expires_at;
-        const now = Math.floor(Date.now() / 1000);
-        const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
-
-        if (timeUntilExpiry < 300) {
-          console.log('Renovando sessão preventivamente...');
-          await supabase.auth.refreshSession();
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao verificar/renovar sessão:', error);
+    if (sessionRefreshInProgress) {
+      return;
     }
+
+    sessionRefreshInProgress = true;
+
+    sessionRefreshPromise = (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const expiresAt = session.expires_at;
+          const now = Math.floor(Date.now() / 1000);
+          const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
+
+          if (timeUntilExpiry < 300) {
+            console.log('Renovando sessão preventivamente...');
+            await supabase.auth.refreshSession();
+            console.log('Sessão renovada com sucesso');
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar/renovar sessão:', error);
+      } finally {
+        sessionRefreshInProgress = false;
+        sessionRefreshPromise = null;
+      }
+    })();
+
+    await sessionRefreshPromise;
   };
 
   refreshInterval = setInterval(refreshSessionIfNeeded, 60000);

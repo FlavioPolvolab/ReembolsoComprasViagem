@@ -9,7 +9,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/lib/supabase";
+import { supabase, waitForSessionRefresh, ensureValidSession, isSessionRefreshing } from "@/lib/supabase";
 
 interface NovoPedidoProps {
   open: boolean;
@@ -29,33 +29,18 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
   const [itemQty, setItemQty] = useState(1);
   const [itemPrice, setItemPrice] = useState("");
   const [connectionWarning, setConnectionWarning] = useState(false);
-  const [isTabVisible, setIsTabVisible] = useState(true);
-  const [submitAttemptWhileHidden, setSubmitAttemptWhileHidden] = useState(false);
-
-  useEffect(() => {
-    const handleVisibility = () => {
-      const visible = document.visibilityState === 'visible';
-      setIsTabVisible(visible);
-      console.log('Tab visibility:', visible ? 'visible' : 'hidden');
-
-      if (visible) {
-        setSubmitAttemptWhileHidden(false);
-      }
-    };
-
-    handleVisibility();
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []);
+  const [sessionRefreshing, setSessionRefreshing] = useState(false);
+  const [isReady, setIsReady] = useState(true);
 
   useEffect(() => {
     if (!open) return;
 
     const checkConnection = async () => {
+      setSessionRefreshing(true);
+      setIsReady(false);
       try {
+        await waitForSessionRefresh();
+
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           setConnectionWarning(true);
@@ -64,11 +49,42 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         }
       } catch (err) {
         setConnectionWarning(true);
+      } finally {
+        setTimeout(() => {
+          setSessionRefreshing(false);
+          setIsReady(true);
+        }, 500);
       }
     };
 
     checkConnection();
   }, [open]);
+
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        console.log('Janela recebeu foco, aguardando atualização da sessão...');
+        setSessionRefreshing(true);
+        setIsReady(false);
+
+        await waitForSessionRefresh();
+
+        setTimeout(() => {
+          setSessionRefreshing(false);
+          setIsReady(true);
+          console.log('Sessão atualizada, pronto para enviar');
+        }, 500);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -88,7 +104,6 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
     setLoading(true);
     setError("");
     setConnectionWarning(false);
-    setSubmitAttemptWhileHidden(false);
 
     console.log("Iniciando criação do pedido...")
 
@@ -98,12 +113,12 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
       console.log("Dados do pedido:", { title, description, items, user: user.id });
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      console.log("Sessão atual:", { session: session?.user?.id, error: sessionError });
+      console.log("Aguardando refresh da sessão se necessário...");
+      await waitForSessionRefresh();
 
-      if (!session || sessionError) {
-        throw new Error("Sessão expirada. Por favor, recarregue a página e faça login novamente.");
-      }
+      console.log("Validando sessão...");
+      const session = await ensureValidSession();
+      console.log("Sessão validada:", { userId: session.user.id });
 
       const total = items.reduce((sum, item) => {
         const preco = Number(item.price);
@@ -112,7 +127,6 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
       console.log("Criando pedido com total:", total);
       console.log("User ID:", user.id);
-      console.log("Session User ID:", session.user.id);
 
       const insertData = {
         title,
@@ -356,6 +370,12 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
               </ul>
             )}
           </div>
+          {sessionRefreshing && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800">
+              <strong>🔄 Atualizando sessão...</strong>
+              <p className="mt-1">Aguarde alguns instantes enquanto sincronizamos sua conexão.</p>
+            </div>
+          )}
           {connectionWarning && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 text-sm text-yellow-800">
               <strong>⚠️ Atenção:</strong> A conexão pode estar inativa. Recomendamos esperar alguns segundos antes de enviar o formulário.
@@ -373,11 +393,16 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
             </div>
           )}
           <DialogFooter className="flex flex-col gap-2">
-            <Button type="submit" className="w-full h-12 text-lg bg-primary text-white font-bold rounded-md hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled={loading}>
+            <Button type="submit" className="w-full h-12 text-lg bg-primary text-white font-bold rounded-md hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled={loading || !isReady || sessionRefreshing}>
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                   Salvando...
+                </div>
+              ) : sessionRefreshing ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Aguarde...
                 </div>
               ) : (
                 "Salvar Pedido"
