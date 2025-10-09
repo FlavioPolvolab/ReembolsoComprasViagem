@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, withAuth } from "@/lib/supabase";
 
 export type Trip = {
   id: string;
@@ -60,11 +60,13 @@ export const fetchTrips = async (userId: string, isAdmin: boolean = false) => {
 };
 
 export const createTrip = async (tripData: any) => {
-  const { error } = await (supabase as any)
-    .from("trips")
-    .insert(tripData);
+  return withAuth(async () => {
+    const { error } = await (supabase as any)
+      .from("trips")
+      .insert(tripData);
 
-  if (error) throw error;
+    if (error) throw error;
+  });
 };
 
 export const deleteTrip = async (tripId: string) => {
@@ -93,23 +95,27 @@ export const fetchTripExpenses = async (tripId: string) => {
 };
 
 export const addTripExpense = async (expenseData: any) => {
-  const { data, error } = await (supabase as any)
-    .from("trip_expenses")
-    .insert(expenseData)
-    .select()
-    .single();
+  return withAuth(async () => {
+    const { data, error } = await (supabase as any)
+      .from("trip_expenses")
+      .insert(expenseData)
+      .select()
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  });
 };
 
 export const updateTripExpense = async (expenseId: string, updateData: any) => {
-  const { error } = await (supabase as any)
-    .from("trip_expenses")
-    .update(updateData)
-    .eq("id", expenseId);
+  return withAuth(async () => {
+    const { error } = await (supabase as any)
+      .from("trip_expenses")
+      .update(updateData)
+      .eq("id", expenseId);
 
-  if (error) throw error;
+    if (error) throw error;
+  });
 };
 
 export const deleteTripExpense = async (expenseId: string) => {
@@ -122,26 +128,28 @@ export const deleteTripExpense = async (expenseId: string) => {
 };
 
 export const uploadTripReceipt = async (tripId: string, expenseId: string, file: File) => {
-  const fileName = `${tripId}/${expenseId}/${Date.now()}_${file.name}`;
-  const filePath = `${fileName}`;
+  return withAuth(async () => {
+    const fileName = `${tripId}/${expenseId}/${Date.now()}_${file.name}`;
+    const filePath = `${fileName}`;
 
-  const { error: uploadError } = await (supabase as any).storage
-    .from("receipts")
-    .upload(filePath, file);
+    const { error: uploadError } = await (supabase as any).storage
+      .from("receipts")
+      .upload(filePath, file);
 
-  if (uploadError) throw uploadError;
+    if (uploadError) throw uploadError;
 
-  const { error: dbError } = await (supabase as any)
-    .from("trip_receipts")
-    .insert({
-      trip_expense_id: expenseId,
-      file_name: file.name,
-      file_type: file.type,
-      file_size: file.size,
-      storage_path: filePath,
-    });
+    const { error: dbError } = await (supabase as any)
+      .from("trip_receipts")
+      .insert({
+        trip_expense_id: expenseId,
+        file_name: file.name,
+        file_type: file.type,
+        file_size: file.size,
+        storage_path: filePath,
+      });
 
-  if (dbError) throw dbError;
+    if (dbError) throw dbError;
+  });
 };
 
 export const fetchTripReceipts = async (expenseId: string) => {
@@ -254,15 +262,17 @@ export const updateTrip = async (
   tripId: string,
   changes: Partial<Pick<Trip, "title" | "description" | "start_date" | "end_date" | "budget_amount" | "cost_center_id">>
 ) => {
-  try {
-    const { error } = await (supabase as any)
-      .from("trips")
-      .update(changes)
-      .eq("id", tripId);
+  return withAuth(async () => {
+    try {
+      const { error } = await (supabase as any)
+        .from("trips")
+        .update(changes)
+        .eq("id", tripId);
 
-    if (error) throw error;
-  } catch (error) {
-    console.error("Erro ao atualizar viagem:", error);
-    throw error;
-  }
+      if (error) throw error;
+    } catch (error) {
+      console.error("Erro ao atualizar viagem:", error);
+      throw error;
+    }
+  });
 };

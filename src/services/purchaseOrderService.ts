@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, withAuth } from "@/lib/supabase";
 
 export const fetchPurchaseOrders = async (userId?: string, isAdmin?: boolean) => {
   let query = (supabase as any)
@@ -19,27 +19,29 @@ export const fetchPurchaseOrders = async (userId?: string, isAdmin?: boolean) =>
 };
 
 export const uploadPurchaseOrderReceipt = async (purchaseOrderId: string, file: File) => {
-  const fileExt = file.name.split(".").pop();
-  const fileName = `${purchaseOrderId}/${Date.now()}_${file.name}`;
-  const filePath = `${fileName}`;
+  return withAuth(async () => {
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${purchaseOrderId}/${Date.now()}_${file.name}`;
+    const filePath = `${fileName}`;
 
-  const { error: uploadError } = await (supabase as any).storage
-    .from("receipts")
-    .upload(filePath, file);
+    const { error: uploadError } = await (supabase as any).storage
+      .from("receipts")
+      .upload(filePath, file);
 
-  if (uploadError) throw uploadError;
+    if (uploadError) throw uploadError;
 
-  const { error: dbError } = await (supabase as any)
-    .from("purchase_order_receipts")
-    .insert({
-      purchase_order_id: purchaseOrderId,
-      file_name: file.name,
-      file_type: file.type,
-      file_size: file.size,
-      storage_path: filePath,
-    });
+    const { error: dbError } = await (supabase as any)
+      .from("purchase_order_receipts")
+      .insert({
+        purchase_order_id: purchaseOrderId,
+        file_name: file.name,
+        file_type: file.type,
+        file_size: file.size,
+        storage_path: filePath,
+      });
 
-  if (dbError) throw dbError;
+    if (dbError) throw dbError;
+  });
 };
 
 export const fetchPurchaseOrderItems = async (purchaseOrderId: string) => {
@@ -53,29 +55,33 @@ export const fetchPurchaseOrderItems = async (purchaseOrderId: string) => {
 };
 
 export const addPurchaseOrderItem = async (purchaseOrderId: string, name: string, quantity: number, unitPrice: number) => {
-  const { error } = await (supabase as any)
-    .from("purchase_order_items")
-    .insert({
-      purchase_order_id: purchaseOrderId,
-      name,
-      quantity,
-      unit_price: unitPrice,
-    });
+  return withAuth(async () => {
+    const { error } = await (supabase as any)
+      .from("purchase_order_items")
+      .insert({
+        purchase_order_id: purchaseOrderId,
+        name,
+        quantity,
+        unit_price: unitPrice,
+      });
 
-  if (error) throw error;
+    if (error) throw error;
+  });
 };
 
 export const updatePurchaseOrderItem = async (itemId: string, name: string, quantity: number, unitPrice: number) => {
-  const { error } = await (supabase as any)
-    .from("purchase_order_items")
-    .update({
-      name,
-      quantity,
-      unit_price: unitPrice,
-    })
-    .eq("id", itemId);
+  return withAuth(async () => {
+    const { error } = await (supabase as any)
+      .from("purchase_order_items")
+      .update({
+        name,
+        quantity,
+        unit_price: unitPrice,
+      })
+      .eq("id", itemId);
 
-  if (error) throw error;
+    if (error) throw error;
+  });
 };
 
 export const deletePurchaseOrderItem = async (itemId: string) => {

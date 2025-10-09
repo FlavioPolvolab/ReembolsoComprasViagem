@@ -29,116 +29,74 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-let sessionRefreshInProgress = false;
-let sessionRefreshPromise: Promise<void> | null = null;
-
-export const isSessionRefreshing = () => sessionRefreshInProgress;
-
-export const waitForSessionRefresh = async () => {
-  if (sessionRefreshPromise) {
-    await sessionRefreshPromise;
-  }
+type RetryConfig = {
+  maxRetries?: number;
+  delayMs?: number;
+  backoffMultiplier?: number;
 };
 
-export const ensureValidSession = async () => {
-  await waitForSessionRefresh();
+const DEFAULT_RETRY_CONFIG: Required<RetryConfig> = {
+  maxRetries: 2,
+  delayMs: 300,
+  backoffMultiplier: 1.5,
+};
 
-  try {
-    const { data: { session }, error } = await supabase.auth.getSession();
+export const ensureAuthForOperation = async (config: RetryConfig = {}): Promise<void> => {
+  const { maxRetries, delayMs, backoffMultiplier } = { ...DEFAULT_RETRY_CONFIG, ...config };
 
-    if (error) {
-      throw new Error(`Erro ao obter sessão: ${error.message}`);
-    }
+  let lastError: Error | null = null;
+  let currentDelay = delayMs;
 
-    if (!session) {
-      throw new Error('Sessão não encontrada. Por favor, faça login novamente.');
-    }
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
 
-    const expiresAt = session.expires_at;
-    const now = Math.floor(Date.now() / 1000);
-    const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
-
-    if (timeUntilExpiry < 60) {
-      console.log('Sessão expirando em breve, renovando...');
-      const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
-
-      if (refreshError || !newSession) {
-        throw new Error('Não foi possível renovar a sessão. Por favor, faça login novamente.');
+      if (error) {
+        throw new Error(`Erro ao obter sessão: ${error.message}`);
       }
 
-      return newSession;
-    }
+      if (!session) {
+        throw new Error('Sessão não encontrada. Por favor, faça login novamente.');
+      }
 
-    return session;
-  } catch (error) {
-    console.error('Erro ao validar sessão:', error);
-    throw error;
-  }
-};
+      const expiresAt = session.expires_at;
+      const now = Math.floor(Date.now() / 1000);
+      const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
 
-if (typeof window !== 'undefined') {
-  let reconnectTimeout: NodeJS.Timeout | null = null;
-  let refreshInterval: NodeJS.Timeout | null = null;
+      if (timeUntilExpiry < 60) {
+        console.log(`[Tentativa ${attempt + 1}] Renovando sessão expirada...`);
+        const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
 
-  const refreshSessionIfNeeded = async () => {
-    if (sessionRefreshInProgress) {
-      return;
-    }
-
-    sessionRefreshInProgress = true;
-
-    sessionRefreshPromise = (async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          const expiresAt = session.expires_at;
-          const now = Math.floor(Date.now() / 1000);
-          const timeUntilExpiry = expiresAt ? expiresAt - now : 0;
-
-          if (timeUntilExpiry < 300) {
-            console.log('Renovando sessão preventivamente...');
-            await supabase.auth.refreshSession();
-            console.log('Sessão renovada com sucesso');
-          }
+        if (refreshError || !newSession) {
+          throw new Error('Não foi possível renovar a sessão. Por favor, faça login novamente.');
         }
-      } catch (error) {
-        console.error('Erro ao verificar/renovar sessão:', error);
-      } finally {
-        sessionRefreshInProgress = false;
-        sessionRefreshPromise = null;
-      }
-    })();
-
-    await sessionRefreshPromise;
-  };
-
-  refreshInterval = setInterval(refreshSessionIfNeeded, 60000);
-
-  const handleVisibilityChange = async () => {
-    if (document.visibilityState === 'visible') {
-      console.log('Aba ficou visível, verificando conexão...');
-
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = null;
       }
 
-      await refreshSessionIfNeeded();
-    } else {
-      console.log('Aba ficou oculta');
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`[Tentativa ${attempt + 1}/${maxRetries + 1}] Erro ao validar autenticação:`, lastError.message);
+
+      if (attempt < maxRetries) {
+        console.log(`Aguardando ${currentDelay}ms antes da próxima tentativa...`);
+        await new Promise(resolve => setTimeout(resolve, currentDelay));
+        currentDelay = Math.floor(currentDelay * backoffMultiplier);
+      }
     }
-  };
+  }
 
-  document.addEventListener('visibilitychange', handleVisibilityChange);
+  throw lastError || new Error('Falha ao validar autenticação após múltiplas tentativas');
+};
 
-  window.addEventListener('focus', async () => {
-    console.log('Janela recebeu foco');
-    await refreshSessionIfNeeded();
-  });
+export const withAuth = async <T>(
+  operation: () => Promise<T>,
+  retryConfig?: RetryConfig
+): Promise<T> => {
+  await ensureAuthForOperation(retryConfig);
+  return operation();
+};
 
-  window.addEventListener('beforeunload', () => {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-    }
-  });
-}
+export const getAuthenticatedClient = async (retryConfig?: RetryConfig) => {
+  await ensureAuthForOperation(retryConfig);
+  return supabase;
+};

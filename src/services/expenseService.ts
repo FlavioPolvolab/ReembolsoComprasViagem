@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, withAuth } from "@/lib/supabase";
 
 export interface Expense {
   id?: string;
@@ -91,65 +91,67 @@ export const fetchExpenseById = async (id: string) => {
 };
 
 export const createExpense = async (expense: Expense, files: File[]) => {
-  try {
-    // Criar despesa primeiro
-    const { data: expenseData, error: expenseError } = await (supabase as any)
-      .from("expenses")
-      .insert([expense])
-      .select()
-      .single();
+  return withAuth(async () => {
+    try {
+      const { data: expenseData, error: expenseError } = await (supabase as any)
+        .from("expenses")
+        .insert([expense])
+        .select()
+        .single();
 
-    if (expenseError) throw expenseError;
+      if (expenseError) throw expenseError;
 
-    // Upload dos arquivos
-    if (files.length > 0) {
-      const receipts: any[] = [];
+      if (files.length > 0) {
+        const receipts: any[] = [];
 
-      for (const file of files) {
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${expenseData.id}/${Date.now()}.${fileExt}`;
-        const filePath = `${fileName}`;
+        for (const file of files) {
+          const fileExt = file.name.split(".").pop();
+          const fileName = `${expenseData.id}/${Date.now()}.${fileExt}`;
+          const filePath = `${fileName}`;
 
-        const { error: uploadError } = await (supabase as any).storage
+          const { error: uploadError } = await (supabase as any).storage
+            .from("receipts")
+            .upload(filePath, file);
+          if (uploadError) throw uploadError;
+
+          receipts.push({
+            expense_id: expenseData.id,
+            file_name: file.name,
+            file_type: file.type,
+            file_size: file.size,
+            storage_path: filePath,
+          });
+        }
+
+        const { error: receiptsError } = await (supabase as any)
           .from("receipts")
-          .upload(filePath, file);
-        if (uploadError) throw uploadError;
-
-        receipts.push({
-          expense_id: expenseData.id,
-          file_name: file.name,
-          file_type: file.type,
-          file_size: file.size,
-          storage_path: filePath,
-        });
+          .insert(receipts);
+        if (receiptsError) throw receiptsError;
       }
 
-      const { error: receiptsError } = await (supabase as any)
-        .from("receipts")
-        .insert(receipts);
-      if (receiptsError) throw receiptsError;
+      return expenseData;
+    } catch (error) {
+      console.error("Erro ao criar despesa:", error);
+      throw error;
     }
-
-    return expenseData;
-  } catch (error) {
-    console.error("Erro ao criar despesa:", error);
-    throw error;
-  }
+  });
 };
 
 export const updateExpense = async (id: string, updateData: any) => {
-  const { data, error } = await (supabase as any)
-    .from("expenses")
-    .update(updateData)
-    .eq("id", id)
-    .select();
+  return withAuth(async () => {
+    const { data, error } = await (supabase as any)
+      .from("expenses")
+      .update(updateData)
+      .eq("id", id)
+      .select();
 
-  if (error) {
-    console.error("Erro ao atualizar despesa:", error);
-    throw error;
-  }
+    if (error) {
+      console.error("Erro ao atualizar despesa:", error);
+      throw error;
+    }
 
-  return data;
+    return data;
+  });
 };
 
 export const deleteExpense = async (id: string) => {
