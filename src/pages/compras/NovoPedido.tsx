@@ -98,7 +98,13 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
       console.log("Dados do pedido:", { title, description, items, user: user.id });
 
-      // 1. Criar pedido
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log("Sessão atual:", { session: session?.user?.id, error: sessionError });
+
+      if (!session || sessionError) {
+        throw new Error("Sessão expirada. Por favor, recarregue a página e faça login novamente.");
+      }
+
       const total = items.reduce((sum, item) => {
         const preco = Number(item.price);
         return sum + (isNaN(preco) ? 0 : preco * item.quantity);
@@ -106,28 +112,52 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
       console.log("Criando pedido com total:", total);
       console.log("User ID:", user.id);
+      console.log("Session User ID:", session.user.id);
 
-      const { data, error: insertError } = await supabase
+      const insertData = {
+        title,
+        description,
+        total_amount: total,
+        user_id: user.id,
+      };
+
+      console.log("Dados do INSERT:", JSON.stringify(insertData, null, 2));
+
+      const insertPromise = supabase
         .from("purchase_orders")
-        .insert({
-          title,
-          description,
-          total_amount: total,
-          user_id: user.id,
-        })
+        .insert(insertData)
         .select()
-        .single();
+        .maybeSingle();
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Timeout: A operação demorou mais de 10 segundos")), 10000);
+      });
+
+      console.log("Executando INSERT...");
+      const { data, error: insertError } = await Promise.race([insertPromise, timeoutPromise]) as any;
 
       console.log("INSERT response:", { data, insertError });
+      console.log("INSERT error details:", insertError ? JSON.stringify(insertError, null, 2) : 'nenhum erro');
 
       if (insertError) {
         console.error("Erro ao inserir pedido:", insertError);
-        throw new Error(`Erro do banco: ${insertError.message || JSON.stringify(insertError)}`);
+        console.error("Código do erro:", insertError.code);
+        console.error("Detalhes do erro:", insertError.details);
+        console.error("Hint do erro:", insertError.hint);
+        console.error("Mensagem do erro:", insertError.message);
+
+        let errorMsg = `Erro ao criar pedido: ${insertError.message}`;
+        if (insertError.code) errorMsg += ` (Código: ${insertError.code})`;
+        if (insertError.hint) errorMsg += ` - Dica: ${insertError.hint}`;
+        if (insertError.details) errorMsg += ` - Detalhes: ${insertError.details}`;
+
+        throw new Error(errorMsg);
       }
 
       if (!data) {
         console.error("Pedido criado mas sem dados retornados!");
-        throw new Error("Pedido criado mas sem dados retornados. Verifique as permissões RLS.");
+        console.error("Verificando RLS policies...")
+        throw new Error("Pedido não foi criado. Verifique se você tem permissão para criar pedidos. Se o problema persistir, contate o administrador.");
       }
 
       console.log("✅ Pedido criado com sucesso:", data);
@@ -166,16 +196,16 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           const fileName = `${data.id}/${Date.now()}_${file.name}`;
           const filePath = `${fileName}`;
 
-          const { error: uploadError } = await (supabase as any).storage
+          const { error: uploadError } = await supabase.storage
             .from("receipts")
             .upload(filePath, file);
 
           if (uploadError) {
             console.error("Erro no upload:", uploadError);
-            throw uploadError;
+            throw new Error(`Erro ao fazer upload de ${file.name}: ${uploadError.message}`);
           }
 
-          const { error: dbError } = await (supabase as any)
+          const { error: dbError } = await supabase
             .from("purchase_order_receipts")
             .insert({
               purchase_order_id: data.id,
@@ -187,7 +217,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
           if (dbError) {
             console.error("Erro ao registrar comprovante:", dbError);
-            throw dbError;
+            throw new Error(`Erro ao registrar comprovante ${file.name}: ${dbError.message}`);
           }
         }
 
