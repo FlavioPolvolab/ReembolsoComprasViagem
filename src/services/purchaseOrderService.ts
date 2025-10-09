@@ -1,44 +1,20 @@
 import { supabase, withConnection } from "@/lib/supabase";
 
 export const fetchPurchaseOrders = async (userId?: string, isAdmin?: boolean) => {
-  console.log('[fetchPurchaseOrders] Called with:', { userId, isAdmin });
-
   return withConnection(async () => {
-    console.log('[fetchPurchaseOrders] Building query...');
     let query = (supabase as any)
       .from("purchase_orders")
       .select("*, users:user_id(name)")
       .order("submitted_date", { ascending: false });
-
     if (!isAdmin && userId) {
-      console.log('[fetchPurchaseOrders] Filtering by user_id:', userId);
       query = query.eq("user_id", userId);
-    } else {
-      console.log('[fetchPurchaseOrders] Fetching all orders (admin mode)');
     }
-
-    console.log('[fetchPurchaseOrders] Executing query...');
     const { data, error } = await query;
-
-    if (error) {
-      console.error('[fetchPurchaseOrders] Query error:', error);
-      console.error('[fetchPurchaseOrders] Error details:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
-      });
-      throw error;
-    }
-
-    console.log('[fetchPurchaseOrders] Query successful, received:', data?.length || 0, 'orders');
-
+    if (error) throw error;
     const pedidos = (data || []).map((p: any) => ({
       ...p,
       user_name: p.users?.name || "-"
     }));
-
-    console.log('[fetchPurchaseOrders] Mapped orders:', pedidos.length);
     return pedidos;
   });
 };

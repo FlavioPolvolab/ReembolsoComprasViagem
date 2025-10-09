@@ -22,66 +22,29 @@ const PedidosTable: React.FC = () => {
   const [selectedPedidoId, setSelectedPedidoId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [massActionLoading, setMassActionLoading] = useState(false);
-  const { user, isAdmin, hasRole, isLoading: authLoading } = useAuth();
+  const { user, isAdmin, hasRole } = useAuth();
   const [pedidos, setPedidos] = useState<PurchaseOrder[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
   const loadPedidos = useCallback(async () => {
-    console.log('[PedidosTable] loadPedidos called', {
-      hasUser: !!user,
-      userId: user?.id,
-      isAdmin,
-      authLoading
-    });
-
-    if (!user) {
-      console.log('[PedidosTable] No user, skipping load');
-      return;
-    }
-
+    if (!user) return;
     setIsLoading(true);
     setLoadError(null);
-
     try {
-      console.log('[PedidosTable] Fetching purchase orders...');
       const data = await fetchPurchaseOrders(user.id, isAdmin);
-      console.log('[PedidosTable] Fetched purchase orders:', data?.length || 0, 'orders');
       setPedidos((data || []) as any);
     } catch (error: any) {
-      console.error("[PedidosTable] Error loading orders:", error);
-      console.error("[PedidosTable] Error details:", {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
-      });
       setLoadError(error);
+      console.error("Erro ao carregar pedidos:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [user, isAdmin, authLoading]);
+  }, [user, isAdmin]);
 
   useEffect(() => {
-    console.log('[PedidosTable] useEffect triggered', {
-      authLoading,
-      hasUser: !!user,
-      userId: user?.id
-    });
-
-    if (authLoading) {
-      console.log('[PedidosTable] Auth still loading, waiting...');
-      return;
-    }
-
-    if (!user) {
-      console.log('[PedidosTable] No user after auth loaded');
-      return;
-    }
-
-    console.log('[PedidosTable] Auth ready, loading pedidos...');
     loadPedidos();
-  }, [loadPedidos, authLoading, user]);
+  }, [loadPedidos]);
 
   // Resumos
   const totalCount = pedidos?.length || 0;

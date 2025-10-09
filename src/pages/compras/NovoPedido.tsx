@@ -43,43 +43,20 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    console.log('[NovoPedido] Form submitted');
-
-    if (loading) {
-      console.log('[NovoPedido] Already loading, skipping');
-      return;
-    }
+    if (loading) return;
 
     setLoading(true);
     setError("");
 
     try {
-      console.log('[NovoPedido] Validating user and items...');
-
-      if (!user) {
-        console.error('[NovoPedido] No user found');
-        throw new Error("Usuário não autenticado");
-      }
-
-      console.log('[NovoPedido] User:', user.id);
-
-      if (items.length === 0) {
-        console.error('[NovoPedido] No items in order');
-        throw new Error("Adicione pelo menos um item ao pedido.");
-      }
-
-      console.log('[NovoPedido] Items to create:', items.length);
-      console.log('[NovoPedido] Order data:', { title, description, itemCount: items.length, fileCount: files.length });
+      if (!user) throw new Error("Usuário não autenticado");
+      if (items.length === 0) throw new Error("Adicione pelo menos um item ao pedido.");
 
       await withConnection(async () => {
-        console.log('[NovoPedido] Inside withConnection, calculating total...');
-
         const total = items.reduce((sum, item) => {
           const preco = Number(item.price);
           return sum + (isNaN(preco) ? 0 : preco * item.quantity);
         }, 0);
-
-        console.log('[NovoPedido] Total amount calculated:', total);
 
         const insertData = {
           title,
@@ -88,8 +65,6 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           user_id: user.id,
         };
 
-        console.log('[NovoPedido] Inserting purchase order:', insertData);
-
         const { data, error: insertError } = await supabase
           .from("purchase_orders")
           .insert(insertData)
@@ -97,27 +72,14 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           .maybeSingle();
 
         if (insertError) {
-          console.error('[NovoPedido] Insert error:', insertError);
-          console.error('[NovoPedido] Insert error details:', {
-            message: insertError.message,
-            code: insertError.code,
-            details: insertError.details,
-            hint: insertError.hint
-          });
           throw new Error(`Erro ao criar pedido: ${insertError.message}`);
         }
 
         if (!data) {
-          console.error('[NovoPedido] No data returned after insert');
           throw new Error("Pedido não foi criado. Verifique se você tem permissão para criar pedidos.");
         }
 
-        console.log('[NovoPedido] Purchase order created successfully:', data.id);
-
-        console.log('[NovoPedido] Inserting items...');
         for (const item of items) {
-          console.log('[NovoPedido] Inserting item:', item.name);
-
           const { error: itemError } = await supabase
             .from("purchase_order_items")
             .insert({
@@ -128,40 +90,22 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
             });
 
           if (itemError) {
-            console.error('[NovoPedido] Item insert error:', itemError);
-            console.error('[NovoPedido] Item error details:', {
-              message: itemError.message,
-              code: itemError.code,
-              details: itemError.details,
-              hint: itemError.hint
-            });
             throw new Error(`Erro ao salvar item ${item.name}: ${itemError.message}`);
           }
-
-          console.log('[NovoPedido] Item inserted successfully:', item.name);
         }
 
-        console.log('[NovoPedido] All items inserted successfully');
-
         if (files.length > 0) {
-          console.log('[NovoPedido] Uploading files:', files.length);
-
           for (const file of files) {
             const fileName = `${data.id}/${Date.now()}_${file.name}`;
             const filePath = `${fileName}`;
-
-            console.log('[NovoPedido] Uploading file:', file.name);
 
             const { error: uploadError } = await supabase.storage
               .from("receipts")
               .upload(filePath, file);
 
             if (uploadError) {
-              console.error('[NovoPedido] Upload error:', uploadError);
               throw new Error(`Erro ao fazer upload de ${file.name}: ${uploadError.message}`);
             }
-
-            console.log('[NovoPedido] File uploaded, registering in database...');
 
             const { error: dbError } = await supabase
               .from("purchase_order_receipts")
@@ -174,45 +118,27 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
               });
 
             if (dbError) {
-              console.error('[NovoPedido] Receipt DB error:', dbError);
               throw new Error(`Erro ao registrar comprovante ${file.name}: ${dbError.message}`);
             }
-
-            console.log('[NovoPedido] Receipt registered:', file.name);
           }
-
-          console.log('[NovoPedido] All files uploaded successfully');
         }
-
-        console.log('[NovoPedido] Order creation complete!');
       });
-
-      console.log('[NovoPedido] Clearing form...');
+      
+      // Limpar formulário
       setTitle("");
       setDescription("");
       setItems([]);
       setFiles([]);
       setError("");
-
-      console.log('[NovoPedido] Calling onSuccess callback...');
+      
       if (onSuccess) onSuccess();
-
-      console.log('[NovoPedido] Closing modal...');
       onOpenChange(false);
-
-      console.log('[NovoPedido] Order created successfully!');
     } catch (err: any) {
-      console.error('[NovoPedido] Error during order creation:', err);
-      console.error('[NovoPedido] Error stack:', err.stack);
-
       const errorMessage = err.message || "Erro ao criar pedido";
-      console.error('[NovoPedido] Final error message:', errorMessage);
-
       setError(errorMessage);
       alert(`Erro: ${errorMessage}`);
     } finally {
       setLoading(false);
-      console.log('[NovoPedido] Form submission complete');
     }
   };
 
