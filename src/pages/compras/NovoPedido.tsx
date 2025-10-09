@@ -132,23 +132,45 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       
       console.log("Criando pedido com total:", total);
 
-      const { data, error: insertError } = await (supabase as any)
-        .from("purchase_orders")
-        .insert({
-          title,
-          description,
-          total_amount: total,
-          user_id: user.id,
-        })
-        .select()
-        .single();
+      console.log("Verificando auth.uid()...");
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      console.log("Usuário atual:", currentUser?.id);
+
+      let insertResponse;
+      try {
+        console.log("Executando INSERT...");
+        insertResponse = await supabase
+          .from("purchase_orders")
+          .insert({
+            title,
+            description,
+            total_amount: total,
+            user_id: user.id,
+          })
+          .select()
+          .maybeSingle();
+
+        console.log("Resposta completa do insert:", JSON.stringify(insertResponse, null, 2));
+      } catch (insertEx) {
+        console.error("EXCEÇÃO ao inserir pedido:", insertEx);
+        throw new Error(`Falha crítica ao criar pedido: ${insertEx}`);
+      }
+
+      const { data, error: insertError } = insertResponse;
+
+      console.log("Verificando resultado - data:", data, "error:", insertError);
 
       if (insertError) {
         console.error("Erro ao inserir pedido:", insertError);
-        throw insertError;
+        throw new Error(`Erro do banco: ${insertError.message || JSON.stringify(insertError)}`);
       }
-      
-      console.log("Pedido criado:", data);
+
+      if (!data) {
+        console.error("Pedido criado mas sem dados retornados!");
+        throw new Error("Pedido criado mas sem dados retornados. Verifique as permissões RLS.");
+      }
+
+      console.log("✅ Pedido criado com sucesso:", data);
       
       // 2. Salvar itens
       console.log("Salvando", items.length, "itens...");
