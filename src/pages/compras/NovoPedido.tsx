@@ -85,96 +85,40 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
 
     if (loading) return;
 
-    if (!isTabVisible) {
-      setSubmitAttemptWhileHidden(true);
-      setError("Por favor, mantenha esta aba ativa para criar o pedido.");
-      return;
-    }
-
     setLoading(true);
     setError("");
     setConnectionWarning(false);
     setSubmitAttemptWhileHidden(false);
 
-    console.log("Iniciando criação do pedido...");
-
-    let wakeLock: any = null;
-    const visibilityCheck = setInterval(() => {
-      if (document.visibilityState !== 'visible') {
-        console.warn('AVISO: Aba ficou oculta durante o processo!');
-      }
-    }, 500);
-
-    try {
-      if ('wakeLock' in navigator) {
-        try {
-          wakeLock = await (navigator as any).wakeLock.request('screen');
-          console.log('Wake Lock ativado - tela não dormirá');
-        } catch (err) {
-          console.warn('Não foi possível ativar Wake Lock:', err);
-        }
-      }
-    } catch (e) {
-      console.warn('Wake Lock não disponível');
-    }
+    console.log("Iniciando criação do pedido...")
 
     try {
       if (!user) throw new Error("Usuário não autenticado");
       if (items.length === 0) throw new Error("Adicione pelo menos um item ao pedido.");
 
       console.log("Dados do pedido:", { title, description, items, user: user.id });
-      
+
       // 1. Criar pedido
       const total = items.reduce((sum, item) => {
         const preco = Number(item.price);
         return sum + (isNaN(preco) ? 0 : preco * item.quantity);
       }, 0);
-      
+
       console.log("Criando pedido com total:", total);
       console.log("User ID:", user.id);
-      console.log("Executando INSERT usando fetch direto...");
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error("Sessão não encontrada. Faça login novamente.");
-      }
+      const { data, error: insertError } = await supabase
+        .from("purchase_orders")
+        .insert({
+          title,
+          description,
+          total_amount: total,
+          user_id: user.id,
+        })
+        .select()
+        .single();
 
-      console.log("Sessão obtida, fazendo fetch...");
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/purchase_orders?select=*`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${session.access_token}`,
-            'Prefer': 'return=representation'
-          },
-          body: JSON.stringify({
-            title,
-            description,
-            total_amount: total,
-            user_id: user.id,
-          }),
-          keepalive: true
-        }
-      );
-
-      console.log("Response status:", response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erro na resposta:", errorText);
-        throw new Error(`Erro ao criar pedido: ${response.status} - ${errorText}`);
-      }
-
-      const dataArray = await response.json();
-      const data = dataArray[0];
-
-      console.log("INSERT completo! data:", data);
-
-      const insertError = null;
+      console.log("INSERT response:", { data, insertError });
 
       if (insertError) {
         console.error("Erro ao inserir pedido:", insertError);
@@ -187,39 +131,28 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       }
 
       console.log("✅ Pedido criado com sucesso:", data);
-      
+
       // 2. Salvar itens
-      console.log("Salvando", items.length, "itens usando fetch...");
+      console.log("Salvando", items.length, "itens...");
 
       for (const item of items) {
         console.log("Salvando item:", item.name);
 
-        const itemResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/purchase_order_items`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({
-              purchase_order_id: data.id,
-              name: item.name,
-              quantity: item.quantity,
-              unit_price: parseFloat(item.price),
-            }),
-            keepalive: true
-          }
-        );
+        const { error: itemError } = await supabase
+          .from("purchase_order_items")
+          .insert({
+            purchase_order_id: data.id,
+            name: item.name,
+            quantity: item.quantity,
+            unit_price: parseFloat(item.price),
+          });
 
-        if (!itemResponse.ok) {
-          const errorText = await itemResponse.text();
-          console.error("Erro ao inserir item:", errorText);
-          throw new Error(`Erro ao salvar item: ${itemResponse.status}`);
+        if (itemError) {
+          console.error("Erro ao inserir item:", itemError);
+          throw new Error(`Erro ao salvar item ${item.name}: ${itemError.message}`);
         }
 
-        console.log("Item salvo:", item.name);
+        console.log("✅ Item salvo:", item.name);
       }
 
       console.log("✅ Todos os itens salvos com sucesso!");
@@ -277,7 +210,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       let errorMessage = err.message || "Erro ao criar pedido";
 
       if (errorMessage.includes('Timeout')) {
-        errorMessage = "A operação está demorando muito. Isso pode acontecer quando você sai da aba do navegador. Por favor, mantenha a aba ativa e tente novamente.";
+        errorMessage = "A operação está demorando muito. Tente novamente.";
       } else if (errorMessage.includes('session')) {
         errorMessage = "Sua sessão expirou. Por favor, recarregue a página e faça login novamente.";
       } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
@@ -290,15 +223,6 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
         alert(`Erro: ${errorMessage}`);
       }
     } finally {
-      if (wakeLock) {
-        try {
-          await wakeLock.release();
-          console.log('Wake Lock liberado');
-        } catch (err) {
-          console.warn('Erro ao liberar Wake Lock:', err);
-        }
-      }
-      clearInterval(visibilityCheck);
       setLoading(false);
     }
   };
@@ -402,18 +326,6 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
               </ul>
             )}
           </div>
-          {!isTabVisible && (
-            <div className="bg-orange-50 border-2 border-orange-400 rounded-md p-4 text-sm text-orange-900">
-              <strong>⚠️ ABA INATIVA DETECTADA!</strong>
-              <p className="mt-1">Esta aba está oculta. Por favor, mantenha-a visível para criar pedidos.</p>
-            </div>
-          )}
-          {submitAttemptWhileHidden && (
-            <div className="bg-red-50 border-2 border-red-400 rounded-md p-4 text-sm text-red-900">
-              <strong>❌ BLOQUEADO:</strong>
-              <p className="mt-1">Não é possível criar pedidos com a aba inativa. Mantenha esta janela visível.</p>
-            </div>
-          )}
           {connectionWarning && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 text-sm text-yellow-800">
               <strong>⚠️ Atenção:</strong> A conexão pode estar inativa. Recomendamos esperar alguns segundos antes de enviar o formulário.
@@ -421,8 +333,8 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
           )}
           {loading && (
             <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800 animate-pulse">
-              <strong>💡 IMPORTANTE - NÃO SAIA DESTA ABA!</strong>
-              <p className="mt-1">Processando... Mantenha esta janela visível até concluir.</p>
+              <strong>Processando...</strong>
+              <p className="mt-1">Aguarde enquanto criamos seu pedido.</p>
             </div>
           )}
           {error && (
@@ -431,12 +343,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
             </div>
           )}
           <DialogFooter className="flex flex-col gap-2">
-            {!isTabVisible && (
-              <div className="w-full text-center text-red-600 font-bold animate-pulse">
-                🚫 IMPOSSÍVEL ENVIAR - ABA INATIVA
-              </div>
-            )}
-            <Button type="submit" className="w-full h-12 text-lg bg-primary text-white font-bold rounded-md hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled={loading || !isTabVisible}>
+            <Button type="submit" className="w-full h-12 text-lg bg-primary text-white font-bold rounded-md hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled={loading}>
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
