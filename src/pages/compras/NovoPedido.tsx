@@ -131,34 +131,50 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       }, 0);
       
       console.log("Criando pedido com total:", total);
+      console.log("User ID:", user.id);
+      console.log("Executando INSERT usando fetch direto...");
 
-      console.log("Verificando auth.uid()...");
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      console.log("Usuário atual:", currentUser?.id);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Sessão não encontrada. Faça login novamente.");
+      }
 
-      let insertResponse;
-      try {
-        console.log("Executando INSERT...");
-        insertResponse = await supabase
-          .from("purchase_orders")
-          .insert({
+      console.log("Sessão obtida, fazendo fetch...");
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/purchase_orders?select=*`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({
             title,
             description,
             total_amount: total,
             user_id: user.id,
-          })
-          .select()
-          .maybeSingle();
+          }),
+          keepalive: true
+        }
+      );
 
-        console.log("Resposta completa do insert:", JSON.stringify(insertResponse, null, 2));
-      } catch (insertEx) {
-        console.error("EXCEÇÃO ao inserir pedido:", insertEx);
-        throw new Error(`Falha crítica ao criar pedido: ${insertEx}`);
+      console.log("Response status:", response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Erro na resposta:", errorText);
+        throw new Error(`Erro ao criar pedido: ${response.status} - ${errorText}`);
       }
 
-      const { data, error: insertError } = insertResponse;
+      const dataArray = await response.json();
+      const data = dataArray[0];
 
-      console.log("Verificando resultado - data:", data, "error:", insertError);
+      console.log("INSERT completo! data:", data);
+
+      const insertError = null;
 
       if (insertError) {
         console.error("Erro ao inserir pedido:", insertError);
@@ -173,29 +189,40 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }
       console.log("✅ Pedido criado com sucesso:", data);
       
       // 2. Salvar itens
-      console.log("Salvando", items.length, "itens...");
+      console.log("Salvando", items.length, "itens usando fetch...");
 
       for (const item of items) {
         console.log("Salvando item:", item.name);
 
-        const { error: itemError } = await (supabase as any)
-          .from("purchase_order_items")
-          .insert({
-            purchase_order_id: data.id,
-            name: item.name,
-            quantity: item.quantity,
-            unit_price: parseFloat(item.price),
-          });
+        const itemResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/purchase_order_items`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              purchase_order_id: data.id,
+              name: item.name,
+              quantity: item.quantity,
+              unit_price: parseFloat(item.price),
+            }),
+            keepalive: true
+          }
+        );
 
-        if (itemError) {
-          console.error("Erro ao inserir item:", itemError);
-          throw itemError;
+        if (!itemResponse.ok) {
+          const errorText = await itemResponse.text();
+          console.error("Erro ao inserir item:", errorText);
+          throw new Error(`Erro ao salvar item: ${itemResponse.status}`);
         }
+
+        console.log("Item salvo:", item.name);
       }
 
-      console.log("Todos os itens salvos com sucesso!");
-      
-      console.log("Todos os itens salvos");
+      console.log("✅ Todos os itens salvos com sucesso!");
       
       // 3. Upload dos arquivos
       if (files.length > 0 && data) {
