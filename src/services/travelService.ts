@@ -1,4 +1,4 @@
-import { supabase, withConnection } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 export type Trip = {
   id: string;
@@ -39,124 +39,113 @@ export type TripReceipt = {
 };
 
 export const fetchTrips = async (userId: string, isAdmin: boolean = false) => {
-  return withConnection(async () => {
-    let query = (supabase as any)
-      .from("trips")
-      .select(`
-        *,
-        users:user_id(name),
-        cost_center:cost_center_id(name)
-      `);
+  let query = (supabase as any)
+    .from("trips")
+    .select(`
+      *,
+      users:user_id(name),
+      cost_center:cost_center_id(name)
+    `);
 
-    if (!isAdmin) {
-      query = query.eq("user_id", userId);
-    }
+  if (!isAdmin) {
+    query = query.eq("user_id", userId);
+  }
 
-    query = query.order("created_at", { ascending: false });
+  query = query.order("created_at", { ascending: false });
 
-    const { data, error } = await query;
+  const { data, error } = await query;
 
-    if (error) throw error;
-    return data;
-  });
+  if (error) throw error;
+  return data;
 };
 
 export const createTrip = async (tripData: any) => {
-  return withConnection(async () => {
-    const { error } = await (supabase as any)
-      .from("trips")
-      .insert(tripData);
+  const { error } = await (supabase as any)
+    .from("trips")
+    .insert(tripData);
 
-    if (error) throw error;
-  });
+  if (error) throw error;
 };
 
 export const deleteTrip = async (tripId: string) => {
-  return withConnection(async () => {
+  try {
     const { error } = await (supabase as any)
       .from("trips")
       .delete()
       .eq("id", tripId);
 
     if (error) throw error;
-  });
+  } catch (error) {
+    console.error("Erro ao excluir viagem:", error);
+    throw error;
+  }
 };
 
 export const fetchTripExpenses = async (tripId: string) => {
-  return withConnection(async () => {
-    const { data, error } = await (supabase as any)
-      .from("trip_expenses")
-      .select("*")
-      .eq("trip_id", tripId)
-      .order("created_at", { ascending: true });
+  const { data, error } = await (supabase as any)
+    .from("trip_expenses")
+    .select("*")
+    .eq("trip_id", tripId)
+    .order("created_at", { ascending: true });
 
-    if (error) throw error;
-    return data;
-  });
+  if (error) throw error;
+  return data;
 };
 
 export const addTripExpense = async (expenseData: any) => {
-  return withConnection(async () => {
-    const { data, error } = await (supabase as any)
-      .from("trip_expenses")
-      .insert(expenseData)
-      .select()
-      .single();
+  const { data, error } = await (supabase as any)
+    .from("trip_expenses")
+    .insert(expenseData)
+    .select()
+    .single();
 
-    if (error) throw error;
-    return data;
-  });
+  if (error) throw error;
+  return data;
 };
 
 export const updateTripExpense = async (expenseId: string, updateData: any) => {
-  return withConnection(async () => {
-    const { error } = await (supabase as any)
-      .from("trip_expenses")
-      .update(updateData)
-      .eq("id", expenseId);
+  const { error } = await (supabase as any)
+    .from("trip_expenses")
+    .update(updateData)
+    .eq("id", expenseId);
 
-    if (error) throw error;
-  });
+  if (error) throw error;
 };
 
 export const deleteTripExpense = async (expenseId: string) => {
-  return withConnection(async () => {
-    const { error } = await (supabase as any)
-      .from("trip_expenses")
-      .delete()
-      .eq("id", expenseId);
+  const { error } = await (supabase as any)
+    .from("trip_expenses")
+    .delete()
+    .eq("id", expenseId);
 
-    if (error) throw error;
-  });
+  if (error) throw error;
 };
 
 export const uploadTripReceipt = async (tripId: string, expenseId: string, file: File) => {
-  return withConnection(async () => {
-    const fileName = `${tripId}/${expenseId}/${Date.now()}_${file.name}`;
-    const filePath = `${fileName}`;
+  const fileName = `${tripId}/${expenseId}/${Date.now()}_${file.name}`;
+  const filePath = `${fileName}`;
 
-    const { error: uploadError } = await (supabase as any).storage
-      .from("receipts")
-      .upload(filePath, file);
+  const { error: uploadError } = await (supabase as any).storage
+    .from("receipts")
+    .upload(filePath, file);
 
-    if (uploadError) throw uploadError;
+  if (uploadError) throw uploadError;
 
-    const { error: dbError } = await (supabase as any)
-      .from("trip_receipts")
-      .insert({
-        trip_expense_id: expenseId,
-        file_name: file.name,
-        file_type: file.type,
-        file_size: file.size,
-        storage_path: filePath,
-      });
+  const { error: dbError } = await (supabase as any)
+    .from("trip_receipts")
+    .insert({
+      trip_expense_id: expenseId,
+      file_name: file.name,
+      file_type: file.type,
+      file_size: file.size,
+      storage_path: filePath,
+    });
 
-    if (dbError) throw dbError;
-  });
+  if (dbError) throw dbError;
 };
 
 export const fetchTripReceipts = async (expenseId: string) => {
-  return withConnection(async () => {
+  try {
     const { data, error } = await (supabase as any)
       .from("trip_receipts")
       .select("*")
@@ -165,33 +154,42 @@ export const fetchTripReceipts = async (expenseId: string) => {
 
     if (error) throw error;
     return data || [];
-  });
+  } catch (error) {
+    console.error("Erro ao buscar comprovantes:", error);
+    throw error;
+  }
 };
 
 export const getSignedUrl = async (storagePath: string) => {
-  return withConnection(async () => {
+  try {
     const { data, error } = await (supabase as any).storage
       .from('receipts')
       .createSignedUrl(storagePath, 60 * 10);
 
     if (error) throw error;
     return data.signedUrl;
-  });
+  } catch (error) {
+    console.error("Erro ao gerar URL assinada:", error);
+    throw error;
+  }
 };
 
 export const closeTrip = async (tripId: string, userId: string) => {
-  return withConnection(async () => {
+  try {
     const { error } = await (supabase as any).rpc("close_trip", {
       trip_id: tripId,
       closer_id: userId,
     });
 
     if (error) throw error;
-  });
+  } catch (error) {
+    console.error("Erro ao fechar viagem:", error);
+    throw error;
+  }
 };
 
 export const closeTripWithNote = async (tripId: string, userId: string, note?: string) => {
-  return withConnection(async () => {
+  try {
     const { error } = await (supabase as any).rpc("close_trip", {
       trip_id: tripId,
       closer_id: userId,
@@ -199,11 +197,14 @@ export const closeTripWithNote = async (tripId: string, userId: string, note?: s
     });
 
     if (error) throw error;
-  });
+  } catch (error) {
+    console.error("Erro ao fechar viagem com nota:", error);
+    throw error;
+  }
 };
 
 export const deleteTripDeep = async (tripId: string) => {
-  return withConnection(async () => {
+  try {
     const { data: expenses, error: expErr } = await (supabase as any)
       .from("trip_expenses")
       .select("id")
@@ -243,19 +244,25 @@ export const deleteTripDeep = async (tripId: string) => {
       .eq("id", tripId);
 
     if (delTripErr) throw delTripErr;
-  });
+  } catch (error) {
+    console.error("Erro ao excluir viagem:", error);
+    throw error;
+  }
 };
 
 export const updateTrip = async (
   tripId: string,
   changes: Partial<Pick<Trip, "title" | "description" | "start_date" | "end_date" | "budget_amount" | "cost_center_id">>
 ) => {
-  return withConnection(async () => {
+  try {
     const { error } = await (supabase as any)
       .from("trips")
       .update(changes)
       .eq("id", tripId);
 
     if (error) throw error;
-  });
+  } catch (error) {
+    console.error("Erro ao atualizar viagem:", error);
+    throw error;
+  }
 };

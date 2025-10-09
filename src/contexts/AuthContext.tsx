@@ -44,6 +44,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
 
   useEffect(() => {
+    let initialLoad = true;
+    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -54,9 +56,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     });
 
+    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Evitar chamada duplicada do fetchUserProfile
+      if (initialLoad) {
+        initialLoad = false;
+        return;
+      }
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
